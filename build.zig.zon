@@ -1,0 +1,15 @@
+.{
+    .name = .z3,
+    .version = "0.1.0",
+    .fingerprint = 0x2bd9e295af61586d,
+    .paths = .{
+        "build.zig",
+        "build.zig.zon",
+    },
+    .dependencies = .{
+        .z3 = .{
+            .url = "git+https://github.com/Z3Prover/z3#3c47fd96cf5645d0c42b2c819d9e9a84380aa721",
+            .hash = "N-V-__8AAMIAsgHbQYS-wmuqPSIv4_u-lZ2-PVGXwU05bWMb",
+        },
+    },
+}
