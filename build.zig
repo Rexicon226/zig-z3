@@ -66,14 +66,36 @@ pub fn build(b: *std.Build) !void {
     });
     z3.addConfigHeader(z3_version);
 
+    const translate_c = b.addTranslateC(.{
+        .root_source_file = src.path("src/api/z3.h"),
+        .target = target,
+        .optimize = optimize,
+    });
+    translate_c.addIncludePath(src.path("src/api"));
+
+    const z3_mod = b.addModule("z3", .{
+        .root_source_file = translate_c.getOutput(),
+        .target = target,
+        .optimize = optimize,
+    });
+
     const example = b.addExecutable(.{
+        .root_source_file = b.path("example.zig"),
         .name = "example",
         .target = target,
         .optimize = optimize,
     });
-    example.addCSourceFile(.{ .file = b.path("example.c") });
-    example.addIncludePath(src.path("src/api"));
+    example.root_module.addImport("z3", z3_mod);
     example.linkLibrary(z3);
+
+    // const example = b.addExecutable(.{
+    //     .name = "example",
+    //     .target = target,
+    //     .optimize = optimize,
+    // });
+    // example.addCSourceFile(.{ .file = b.path("example.c") });
+    // example.addIncludePath(src.path("src/api"));
+    // example.linkLibrary(z3);
 
     const run_example = b.step("example", "Runs the example");
     run_example.dependOn(&b.addRunArtifact(example).step);
