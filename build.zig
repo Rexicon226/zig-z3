@@ -78,6 +78,7 @@ pub fn build(b: *std.Build) !void {
         .target = target,
         .optimize = optimize,
     });
+    z3_mod.linkLibrary(z3);
 
     const example = b.addExecutable(.{
         .root_source_file = b.path("example.zig"),
@@ -86,16 +87,6 @@ pub fn build(b: *std.Build) !void {
         .optimize = optimize,
     });
     example.root_module.addImport("z3", z3_mod);
-    example.linkLibrary(z3);
-
-    // const example = b.addExecutable(.{
-    //     .name = "example",
-    //     .target = target,
-    //     .optimize = optimize,
-    // });
-    // example.addCSourceFile(.{ .file = b.path("example.c") });
-    // example.addIncludePath(src.path("src/api"));
-    // example.linkLibrary(z3);
 
     const run_example = b.step("example", "Runs the example");
     run_example.dependOn(&b.addRunArtifact(example).step);
