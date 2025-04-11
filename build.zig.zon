@@ -5,6 +5,7 @@
     .paths = .{
         "build.zig",
         "build.zig.zon",
+        "LICENSE",
         "generated",
     },
     .dependencies = .{
