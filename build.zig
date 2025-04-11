@@ -80,13 +80,20 @@ pub fn build(b: *std.Build) !void {
     });
     z3_mod.linkLibrary(z3);
 
+    const z3_bindings = b.addModule("z3_bindings", .{
+        .root_source_file = b.path("src/lib.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    z3_bindings.addImport("z3", z3_mod);
+
     const example = b.addExecutable(.{
         .root_source_file = b.path("example.zig"),
         .name = "example",
         .target = target,
         .optimize = optimize,
     });
-    example.root_module.addImport("z3", z3_mod);
+    example.root_module.addImport("z3", z3_bindings);
 
     const run_example = b.step("example", "Runs the example");
     run_example.dependOn(&b.addRunArtifact(example).step);
