@@ -11,7 +11,7 @@ pub fn main() !void {
     const y = model.constant(.int, "y");
 
     const constraint = model.eq(
-        model.add(.{ x, y }),
+        model.add(&.{ x, y }),
         model.int(10),
     );
 
