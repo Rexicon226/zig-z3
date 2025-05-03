@@ -4,6 +4,10 @@ const z3 = @import("z3");
 const Model = z3.Model;
 
 pub fn main() !void {
+    basic();
+}
+
+fn basic() void {
     var model = Model.init(.solver);
     defer model.deinit();
 

@@ -5,6 +5,10 @@ pub fn build(b: *std.Build) !void {
     const optimize = b.standardOptimizeOption(.{});
 
     const src = b.dependency("z3", .{});
+    const gmp = b.dependency("gmp", .{
+        .target = target,
+        .optimize = optimize,
+    });
 
     const z3 = b.addLibrary(.{
         .name = "z3",
@@ -15,7 +19,9 @@ pub fn build(b: *std.Build) !void {
         }),
     });
     b.installArtifact(z3);
+
     z3.linkLibCpp();
+    z3.linkLibrary(gmp.artifact("gmp"));
     z3.addIncludePath(src.path("src"));
     z3.addIncludePath(b.path("generated"));
 
@@ -23,8 +29,7 @@ pub fn build(b: *std.Build) !void {
         .root = src.path("src"),
         .files = z3_source_files,
         .flags = &.{
-            // TODO: package libgmp for build.zig as well!
-            "-D_MP_INTERNAL",
+            "-D_MP_GMP",
             switch (optimize) {
                 .Debug => "-DZ3DEBUG",
                 else => "",
@@ -46,7 +51,7 @@ pub fn build(b: *std.Build) !void {
             "gparams_register_modules.cpp",
         },
         .flags = &.{
-            "-D_MP_INTERNAL",
+            "-D_MP_GMP",
             switch (optimize) {
                 .Debug => "-DZ3DEBUG",
                 else => "",

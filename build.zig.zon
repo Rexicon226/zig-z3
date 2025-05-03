@@ -14,5 +14,9 @@
             .url = "git+https://github.com/Z3Prover/z3#3c47fd96cf5645d0c42b2c819d9e9a84380aa721",
             .hash = "N-V-__8AAMIAsgHbQYS-wmuqPSIv4_u-lZ2-PVGXwU05bWMb",
         },
+        .gmp = .{
+            .url = "git+https://github.com/Rexicon226/zig-gmp#301e5e41f389e6e0018203aed024248e541d43a8",
+            .hash = "gmp-0.1.0-jHjCQspfAQB0ALDbA9u1o6veJx73G6W7iuVOSXJYdger",
+        },
     },
 }
