@@ -15,8 +15,8 @@
             .hash = "N-V-__8AAMIAsgHbQYS-wmuqPSIv4_u-lZ2-PVGXwU05bWMb",
         },
         .gmp = .{
-            .url = "git+https://github.com/Rexicon226/zig-gmp#301e5e41f389e6e0018203aed024248e541d43a8",
-            .hash = "gmp-0.1.0-jHjCQspfAQB0ALDbA9u1o6veJx73G6W7iuVOSXJYdger",
+            .url = "git+https://github.com/Rexicon226/zig-gmp#2c07dafc4fe67e81f42923a307d04a0cbfcefdf9",
+            .hash = "gmp-0.1.0-jHjCQiT9AQBH0_YPvUaTn7pNQrw_KtYJysievbfQrlOg",
         },
     },
 }
