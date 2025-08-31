@@ -1,264 +1,476 @@
 const std = @import("std");
-const z3 = @import("z3");
+const c = @import("z3");
+const assert = std.debug.assert;
 
-pub const Sort = enum {
-    int,
-    bool,
-    real,
+fn errorHandler(ctx: c.Z3_context, e: c.Z3_error_code) callconv(.c) void {
+    std.debug.print("Error #{}: {s}\nIncorrect use of Z3.\n", .{ e, c.Z3_get_error_msg(ctx, e) });
+    std.process.exit(1);
+}
 
-    fn Data(s: Sort) type {
-        return switch (s) {
-            .int => Int,
-            .bool => Bool,
-            .real => Real,
-        };
-    }
-};
+pub const Context = struct {
+    inner: c.Z3_context,
+    /// stored on the heap to keep Context small and copyable
+    cached_sorts: *CachedSorts,
 
-pub const Prover = enum {
-    solver,
-    optimize,
-};
+    /// sorts that can be cached whose mk_*_sort method has one argument
+    const CachedSorts = struct {
+        bool: ?c.Z3_sort = null,
+        int: ?c.Z3_sort = null,
+        real: ?c.Z3_sort = null,
+        float32: ?c.Z3_sort = null,
+        double: ?c.Z3_sort = null,
+        string: ?c.Z3_sort = null,
+    };
 
-pub const Check = enum(i2) {
-    /// Unsatisfiable
-    false = -1,
-    /// Unknown
-    undef = 0,
-    /// Satisfiable
-    true = 1,
-};
+    pub const ConfigKvs = []const [2][:0]const u8;
 
-pub const Int = extern struct {
-    ast: z3.Z3_ast,
-};
-
-pub const Real = extern struct {
-    ast: z3.Z3_ast,
-};
-
-pub const Bool = extern struct {
-    ast: z3.Z3_ast,
-};
-
-pub const Model = struct {
-    cfg: z3.Z3_config,
-    ctx: z3.Z3_context,
-    /// Stored initialized types and caches them for use later.
-    sorts: std.enums.EnumFieldStruct(
-        Sort,
-        ?z3.Z3_sort,
-        @as(?z3.Z3_sort, null),
-    ),
-    prover: union(Prover) {
-        solver: z3.Z3_solver,
-        optimize: z3.Z3_optimize,
-    },
-
-    pub fn init(comptime p: Prover) Model {
-        const cfg = z3.Z3_mk_config();
-        const ctx = z3.Z3_mk_context(cfg);
-        return .{
-            .cfg = cfg,
-            .ctx = ctx,
-            .sorts = .{},
-            .prover = @unionInit(@FieldType(Model, "prover"), @tagName(p), switch (p) {
-                .solver => s: {
-                    const solver = z3.Z3_mk_solver(ctx);
-                    z3.Z3_solver_inc_ref(ctx, solver);
-                    break :s solver;
-                },
-                .optimize => o: {
-                    const optimize = z3.Z3_mk_optimize(ctx);
-                    z3.Z3_optimize_inc_ref(ctx, optimize);
-                    break :o optimize;
-                },
-            }),
-        };
-    }
-
-    pub fn deinit(m: *Model) void {
-        switch (m.prover) {
-            .solver => |s| z3.Z3_solver_dec_ref(m.ctx, s),
-            .optimize => |o| z3.Z3_optimize_dec_ref(m.ctx, o),
+    pub fn init(allocator: std.mem.Allocator, kvs: ConfigKvs) !Context {
+        const cfg = c.Z3_mk_config();
+        defer c.Z3_del_config(cfg);
+        for (kvs) |kv| {
+            c.Z3_set_param_value(cfg, kv[0].ptr, kv[1].ptr);
         }
-        z3.Z3_del_context(m.ctx);
-        z3.Z3_del_config(m.cfg);
+        const inner = c.Z3_mk_context_rc(cfg);
+        c.Z3_set_error_handler(inner, errorHandler);
+        const cached_sorts = try allocator.create(CachedSorts);
+        cached_sorts.* = .{};
+        return .{ .inner = inner, .cached_sorts = cached_sorts };
     }
 
-    fn getSort(m: *Model, comptime s: Sort) z3.Z3_sort {
-        return @field(m.sorts, @tagName(s)) orelse {
-            const sort = @field(z3, "Z3_mk_" ++ @tagName(s) ++ "_sort")(m.ctx);
-            @field(m.sorts, @tagName(s)) = sort;
+    pub fn deinit(ctx: Context, allocator: std.mem.Allocator) void {
+        allocator.destroy(ctx.cached_sorts);
+        c.Z3_del_context(ctx.inner);
+    }
+
+    fn getSort(ctx: Context, comptime tag: AstKind, args: anytype) c.Z3_sort {
+        if (@hasField(CachedSorts, @tagName(tag))) {
+            comptime assert(args.len == 0);
+            if (@field(ctx.cached_sorts, @tagName(tag))) |sort| return sort;
+            const sort = @field(c, "Z3_mk_" ++ @tagName(tag) ++ "_sort")(ctx.inner);
+            c.Z3_inc_ref(ctx.inner, c.Z3_sort_to_ast(ctx.inner, sort));
+            @field(ctx.cached_sorts, @tagName(tag)) = sort;
             return sort;
-        };
-    }
-
-    fn gatherAst(args: anytype) [args.len]z3.Z3_ast {
-        const len = args.len;
-        var ast: [len]z3.Z3_ast = undefined;
-        inline for (args, 0..) |arg, i| ast[i] = arg.ast;
-        return ast;
-    }
-
-    fn Coerced(args: type) type {
-        const info = @typeInfo(args);
-        if (info != .pointer) @compileError("expected either a pointer to tuple or slice");
-        if (info == .pointer and info.pointer.size == .slice) {
-            return args;
-        } else {
-            const first = @typeInfo(std.meta.Child(args)).@"struct".fields[0];
-            return []const first.type;
         }
+
+        const sort = @call(.auto, @field(c, "Z3_mk_" ++ @tagName(tag) ++ "_sort"), .{ctx.inner} ++ args);
+        c.Z3_inc_ref(ctx.inner, c.Z3_sort_to_ast(ctx.inner, sort));
+        return sort;
+    }
+};
+
+pub const AstKind = enum {
+    bool,
+    int,
+    real,
+    float,
+    float32,
+    double,
+    string,
+    bv,
+    array,
+    set,
+    seq,
+
+    fn Type(tag: AstKind) type {
+        return switch (tag) {
+            .bool => Bool,
+            .int => Int,
+            .real => Real,
+            .float => Float,
+            .float32 => Float32,
+            .double => Double,
+            .string => String,
+            .bv => Bitvector,
+            .array => Array,
+            .set => Set,
+            .seq => Seq,
+        };
     }
 
-    /// Note that this function uses `Z3_mk_fresh_const` instead of `Z3_mk_const`.
-    pub fn constant(m: *Model, comptime s: Sort, name: ?[:0]const u8) s.Data() {
-        const sort = m.getSort(s);
-        return .{ .ast = z3.Z3_mk_fresh_const(m.ctx, name orelse null, sort) };
+    pub fn isNumeric(tag: AstKind) bool {
+        return switch (tag) {
+            .int,
+            .real,
+            .float,
+            .float32,
+            .double,
+            => true,
+            else => false,
+        };
     }
+};
 
-    pub fn int(m: *Model, value: i32) Int {
-        return .{ .ast = z3.Z3_mk_int(m.ctx, value, m.getSort(.int)) };
-    }
+pub const Bool = Ast(struct {
+    pub const ast_kind: AstKind = .bool;
+});
+pub const Int = Ast(struct {
+    pub const ast_kind: AstKind = .int;
+});
+pub const Real = Ast(struct {
+    pub const ast_kind: AstKind = .real;
+});
+pub const Float = Ast(struct {
+    pub const ast_kind: AstKind = .float;
+});
+pub const Float32 = Ast(struct {
+    pub const ast_kind: AstKind = .float32;
+});
+pub const Double = Ast(struct {
+    pub const ast_kind: AstKind = .double;
+});
+pub const String = Ast(struct {
+    pub const ast_kind: AstKind = .string;
+});
+pub const Bitvector = Ast(struct {
+    pub const ast_kind: AstKind = .bv;
+});
+pub const Array = Ast(struct {
+    pub const ast_kind: AstKind = .array;
+});
+pub const Set = Ast(struct {
+    pub const ast_kind: AstKind = .set;
+});
+pub const Seq = Ast(struct {
+    pub const ast_kind: AstKind = .seq;
+});
 
-    pub fn @"true"(m: *Model) Bool {
-        return .{ .ast = z3.Z3_mk_true(m.ctx) };
-    }
+comptime {
+    assert(Bool != Int);
+}
 
-    /// Creates an addition AST node.
-    /// All arguments must be the same sort, being either int or real.
-    /// The return type will be that same sort.
-    pub fn add(m: *Model, args: anytype) std.meta.Child(Coerced(@TypeOf(args))) {
-        std.debug.assert(args.len > 0);
-        const coerced: Coerced(@TypeOf(args)) = args;
-        return .{ .ast = z3.Z3_mk_add(
-            m.ctx,
-            @intCast(args.len),
-            @as([*]const z3.Z3_ast, @ptrCast(coerced)),
-        ) };
-    }
+pub fn Ast(T: type) type {
+    return struct {
+        // store ctx to allow a builder pattern. i.e. `x.div(y)`
+        ctx: Context,
+        ast: c.Z3_ast,
 
-    /// Creates an multiplication AST node.
-    /// All arguments must be the same sort, being either int or real.
-    /// The return type will be that same sort.
-    pub fn mul(m: *Model, args: anytype) std.meta.Child(Coerced(@TypeOf(args))) {
-        std.debug.assert(args.len > 0);
-        const coerced: Coerced(@TypeOf(args)) = args;
-        return .{ .ast = z3.Z3_mk_mul(
-            m.ctx,
-            args.len,
-            @as([*]const z3.Z3_ast, @ptrCast(coerced)),
-        ) };
-    }
+        const Self = @This();
 
-    pub fn @"or"(m: *Model, args: []const Bool) Bool {
-        std.debug.assert(args.len > 0);
-        return .{ .ast = z3.Z3_mk_or(
-            m.ctx,
-            @intCast(args.len),
-            @as([*]const z3.Z3_ast, @ptrCast(args)),
-        ) };
-    }
-
-    pub fn not(m: *Model, op: Bool) Bool {
-        return .{ .ast = z3.Z3_mk_not(m.ctx, op.ast) };
-    }
-
-    /// Creates an AST node that implies when `lhs` is true, `rhs` must be true.
-    pub fn implies(m: *Model, lhs: Bool, rhs: Bool) Bool {
-        return .{ .ast = z3.Z3_mk_implies(m.ctx, lhs.ast, rhs.ast) };
-    }
-
-    /// Create an AST node representing an if-then-else. If `predicate` is true,
-    /// the node results in `lhs`, otherwise it results in `rhs`.
-    ///
-    /// `rhs` and `lhs` must be the same sort, and the result type is that sort.
-    pub fn ite(m: *Model, predicate: Bool, lhs: anytype, rhs: anytype) @TypeOf(lhs) {
-        comptime std.debug.assert(@TypeOf(lhs) == @TypeOf(rhs));
-        return .{ .ast = z3.Z3_mk_ite(m.ctx, predicate.ast, lhs.ast, rhs.ast) };
-    }
-
-    /// Create an AST node representing `lhs = rhs`.
-    /// The nodes `lhs` and `rhs` must have the same type.
-    pub fn eq(m: *Model, lhs: anytype, rhs: anytype) Bool {
-        comptime std.debug.assert(@TypeOf(lhs) == @TypeOf(rhs));
-        return .{ .ast = z3.Z3_mk_eq(m.ctx, lhs.ast, rhs.ast) };
-    }
-
-    /// Create an AST node representing `lhs <= rhs`.
-    /// The nodes `lhs` and `rhs` must have the same type.
-    pub fn le(m: *Model, lhs: anytype, rhs: anytype) Bool {
-        comptime std.debug.assert(@TypeOf(lhs) == @TypeOf(rhs));
-        return .{ .ast = z3.Z3_mk_le(m.ctx, lhs.ast, rhs.ast) };
-    }
-
-    pub fn iff(m: *Model, lhs: Bool, rhs: Bool) Bool {
-        return .{ .ast = z3.Z3_mk_iff(m.ctx, lhs.ast, rhs.ast) };
-    }
-
-    /// Assert a constraint into the solver.
-    pub fn assert(m: *Model, constraint: anytype) void {
-        switch (m.prover) {
-            .solver => |s| z3.Z3_solver_assert(m.ctx, s, constraint.ast),
-            .optimize => |o| z3.Z3_optimize_assert(m.ctx, o, constraint.ast),
+        pub fn deinit(self: Self) void {
+            c.Z3_dec_ref(self.ctx.inner, self.ast);
         }
+
+        // *** Numeric ops ***
+        fn numericBinop(R: type, lhs: Self, rhs: Self, func: @TypeOf(c.Z3_mk_div)) R {
+            comptime if (!T.ast_kind.isNumeric()) unreachable;
+            const ast = func(lhs.ctx.inner, lhs.ast, rhs.ast);
+            c.Z3_inc_ref(lhs.ctx.inner, ast);
+            return .{ .ast = ast, .ctx = lhs.ctx };
+        }
+
+        pub fn div(lhs: Self, rhs: Self) Self {
+            return numericBinop(Self, lhs, rhs, c.Z3_mk_div);
+        }
+        pub fn rem(lhs: Self, rhs: Self) Self {
+            return numericBinop(Self, lhs, rhs, c.Z3_mk_rem);
+        }
+        pub fn mod(lhs: Self, rhs: Self) Self {
+            return numericBinop(Self, lhs, rhs, c.Z3_mk_mod);
+        }
+        pub fn power(lhs: Self, rhs: Self) Real {
+            return numericBinop(Self, lhs, rhs, c.Z3_mk_power);
+        }
+
+        pub fn lt(lhs: Self, rhs: Self) Bool {
+            return numericBinop(Bool, lhs, rhs, c.Z3_mk_lt);
+        }
+        pub fn le(lhs: Self, rhs: Self) Bool {
+            return numericBinop(Bool, lhs, rhs, c.Z3_mk_le);
+        }
+        pub fn gt(lhs: Self, rhs: Self) Bool {
+            return numericBinop(Bool, lhs, rhs, c.Z3_mk_gt);
+        }
+        pub fn ge(lhs: Self, rhs: Self) Bool {
+            return numericBinop(Bool, lhs, rhs, c.Z3_mk_ge);
+        }
+        pub fn eq(lhs: Self, rhs: Self) Bool {
+            return numericBinop(Bool, lhs, rhs, c.Z3_mk_eq);
+        }
+
+        fn numericVarop(lhs: Self, rhss: []const Self, comptime func: @TypeOf(c.Z3_mk_add)) Self {
+            comptime if (!T.ast_kind.isNumeric()) unreachable;
+            var buf: [16]c.Z3_ast = undefined;
+            if (buf.len < rhss.len + 1) @panic("numericVarop only supports up to 15 rhs args.");
+            buf[0] = lhs.ast;
+            for (0..rhss.len) |i| buf[i + 1] = rhss[i].ast;
+            const ast = func(lhs.ctx.inner, @intCast(rhss.len + 1), &buf);
+            c.Z3_inc_ref(lhs.ctx.inner, ast);
+            return .{ .ast = ast, .ctx = lhs.ctx };
+        }
+
+        pub fn add(lhs: Self, rhss: []const Self) Self {
+            return numericVarop(lhs, rhss, c.Z3_mk_add);
+        }
+
+        pub fn sub(lhs: Self, rhss: []const Self) Self {
+            return numericVarop(lhs, rhss, c.Z3_mk_sub);
+        }
+
+        pub fn mul(lhs: Self, rhss: []const Self) Self {
+            return numericVarop(lhs, rhss, c.Z3_mk_mul);
+        }
+
+        pub fn int64(ast: Self) ?i64 {
+            var ret: i64 = undefined;
+            return if (c.Z3_get_numeral_int64(ast.ctx.inner, ast.ast, &ret))
+                ret
+            else
+                null;
+        }
+
+        // *** Bitvector ops ***
+        fn bvBinop(R: type, lhs: Bitvector, rhs: Bitvector, func: @TypeOf(c.Z3_mk_bvadd)) R {
+            comptime if (T.ast_kind != .bv) unreachable;
+            const ast = func(lhs.ctx.inner, lhs.ast, rhs.ast);
+            c.Z3_inc_ref(lhs.ctx.inner, ast);
+            return .{ .ast = ast, .ctx = lhs.ctx };
+        }
+
+        /// Addition
+        pub fn bvadd(lhs: Bitvector, rhs: Bitvector) Bitvector {
+            return bvBinop(Bitvector, lhs, rhs, c.Z3_mk_bvadd);
+        }
+        /// Subtraction
+        pub fn bvsub(lhs: Bitvector, rhs: Bitvector) Bitvector {
+            return bvBinop(Bitvector, lhs, rhs, c.Z3_mk_bvsub);
+        }
+        /// Multiplication
+        pub fn bvmul(lhs: Bitvector, rhs: Bitvector) Bitvector {
+            return bvBinop(Bitvector, lhs, rhs, c.Z3_mk_bvmul);
+        }
+        /// Unsigned division
+        pub fn bvudiv(lhs: Bitvector, rhs: Bitvector) Bitvector {
+            return bvBinop(Bitvector, lhs, rhs, c.Z3_mk_bvudiv);
+        }
+        /// Signed division
+        pub fn bvsdiv(lhs: Bitvector, rhs: Bitvector) Bitvector {
+            return bvBinop(Bitvector, lhs, rhs, c.Z3_mk_bvsdiv);
+        }
+        /// Unsigned remainder
+        pub fn bvurem(lhs: Bitvector, rhs: Bitvector) Bitvector {
+            return bvBinop(Bitvector, lhs, rhs, c.Z3_mk_bvurem);
+        }
+        /// Signed remainder (sign follows dividend)
+        pub fn bvsrem(lhs: Bitvector, rhs: Bitvector) Bitvector {
+            return bvBinop(Bitvector, lhs, rhs, c.Z3_mk_bvsrem);
+        }
+        /// Signed remainder (sign follows divisor)
+        pub fn bvsmod(lhs: Bitvector, rhs: Bitvector) Bitvector {
+            return bvBinop(Bitvector, lhs, rhs, c.Z3_mk_bvsmod);
+        }
+
+        /// Unsigned less than
+        pub fn bvult(lhs: Bitvector, rhs: Bitvector) Bool {
+            return bvBinop(Bool, lhs, rhs, c.Z3_mk_bvult);
+        }
+        /// Signed less than
+        pub fn bvslt(lhs: Bitvector, rhs: Bitvector) Bool {
+            return bvBinop(Bool, lhs, rhs, c.Z3_mk_bvslt);
+        }
+        /// Unsigned less than or equal
+        pub fn bvule(lhs: Bitvector, rhs: Bitvector) Bool {
+            return bvBinop(Bool, lhs, rhs, c.Z3_mk_bvule);
+        }
+        /// Signed less than or equal
+        pub fn bvsle(lhs: Bitvector, rhs: Bitvector) Bool {
+            return bvBinop(Bool, lhs, rhs, c.Z3_mk_bvsle);
+        }
+        /// Unsigned greater or equal
+        pub fn bvuge(lhs: Bitvector, rhs: Bitvector) Bool {
+            return bvBinop(Bool, lhs, rhs, c.Z3_mk_bvuge);
+        }
+        /// Signed greater or equal
+        pub fn bvsge(lhs: Bitvector, rhs: Bitvector) Bool {
+            return bvBinop(Bool, lhs, rhs, c.Z3_mk_bvsge);
+        }
+        /// Unsigned greater than
+        pub fn bvugt(lhs: Bitvector, rhs: Bitvector) Bool {
+            return bvBinop(Bool, lhs, rhs, c.Z3_mk_bvugt);
+        }
+        /// Signed greater than
+        pub fn bvsgt(lhs: Bitvector, rhs: Bitvector) Bool {
+            return bvBinop(Bool, lhs, rhs, c.Z3_mk_bvsgt);
+        }
+    };
+}
+
+pub const Symbol = union(enum) {
+    int: i32,
+    string: ?[:0]const u8,
+
+    pub const Tag = std.meta.Tag(Symbol);
+
+    fn asZ3(sym: Symbol, ctx: Context) c.Z3_symbol {
+        return switch (sym) {
+            .int => |i| c.Z3_mk_int_symbol(ctx.inner, i),
+            .string => |s| c.Z3_mk_string_symbol(ctx.inner, @ptrCast(s)),
+        };
+    }
+};
+
+pub const Sort = struct {
+    ctx: Context,
+    inner: c.Z3_sort,
+};
+
+pub const Solver = struct {
+    ctx: Context,
+    inner: c.Z3_solver,
+
+    pub fn initCtx(ctx: Context) Solver {
+        const inner = c.Z3_mk_solver(ctx.inner);
+        c.Z3_solver_inc_ref(ctx.inner, inner);
+        return .{ .ctx = ctx, .inner = inner };
     }
 
-    pub fn check(m: *Model) Check {
-        const result = switch (m.prover) {
-            .solver => |s| z3.Z3_solver_check(m.ctx, s),
-            .optimize => |o| z3.Z3_optimize_check(m.ctx, o, 0, null),
-        };
-        return @enumFromInt(result);
+    pub fn initConfig(allocator: std.mem.Allocator, config_kvs: Context.ConfigKvs) !Solver {
+        return .initCtx(try .init(allocator, config_kvs));
     }
 
-    pub fn minimize(m: *Model, objective: anytype) void {
-        _ = switch (m.prover) {
-            .solver => @panic("cannot minimze 'solver' prover"),
-            .optimize => |o| z3.Z3_optimize_minimize(m.ctx, o, objective.ast),
-        };
+    pub fn init(gpa: std.mem.Allocator) !Solver {
+        return initConfig(gpa, &.{.{ "proof", "true" }});
     }
 
-    /// The string is still owned by the model, it's stored in a temporary buffer inside and dies on `deinit()`.
-    pub fn toString(m: *const Model) []const u8 {
-        const str = switch (m.prover) {
-            .solver => |s| z3.Z3_solver_to_string(m.ctx, s),
-            .optimize => |o| z3.Z3_optimize_to_string(m.ctx, o),
-        };
-        return std.mem.sliceTo(str, 0);
+    pub fn deinit(s: Solver, allocator: std.mem.Allocator) void {
+        c.Z3_solver_dec_ref(s.ctx.inner, s.inner);
+        s.ctx.deinit(allocator);
     }
 
     /// Panics if
     /// 1. `check()` wasn't ran before calling `getLastModel()`.
     /// 2. The last `check()` call didn't return `true`.
-    pub fn getLastModel(m: *Model) PartialModel {
-        const model = switch (m.prover) {
-            .optimize => |o| z3.Z3_optimize_get_model(m.ctx, o),
-            .solver => @panic("TODO"),
-        };
-        z3.Z3_model_inc_ref(m.ctx, model);
-        return .{ .m = m, .raw = model };
+    pub fn getLastModel(s: Solver) Model {
+        const m = c.Z3_solver_get_model(s.ctx.inner, s.inner);
+        c.Z3_model_inc_ref(s.ctx.inner, m);
+        return .{ .ctx = s.ctx, .inner = m };
+    }
+
+    pub fn assert(s: Solver, ast: anytype) void {
+        c.Z3_solver_assert(s.ctx.inner, s.inner, ast.ast);
+    }
+
+    pub fn check(s: Solver) SatResult {
+        return @enumFromInt(c.Z3_solver_check(s.ctx.inner, s.inner));
+    }
+
+    pub fn constant(s: Solver, comptime tag: AstKind, name: ?[:0]const u8, args: anytype) tag.Type() {
+        const sort = s.ctx.getSort(tag, args);
+        const sym = Symbol.asZ3(.{ .string = name }, s.ctx);
+        const ast = c.Z3_mk_const(s.ctx.inner, sym, sort);
+        c.Z3_inc_ref(s.ctx.inner, ast);
+        return .{ .ctx = s.ctx, .ast = ast };
+    }
+
+    pub fn int64(s: Solver, i: i64) Int {
+        const sort = s.ctx.getSort(.int, .{});
+        const ast = c.Z3_mk_int64(s.ctx.inner, i, sort);
+        c.Z3_inc_ref(s.ctx.inner, ast);
+        return .{ .ctx = s.ctx, .ast = ast };
+    }
+
+    pub fn bvFromInt64(s: Solver, i: i64, sz: u32) Bitvector {
+        const sort = s.ctx.getSort(.bv, .{sz});
+        const ast = c.Z3_mk_int64(s.ctx.inner, i, sort);
+        c.Z3_inc_ref(s.ctx.inner, ast);
+        return .{ .ctx = s.ctx, .ast = ast };
+    }
+
+    fn makeSort(s: Solver, comptime func: @TypeOf(c.Z3_mk_bool_sort)) Sort {
+        const sort = func(s.ctx.inner);
+        c.Z3_inc_ref(s.ctx.inner, sort);
+        return .{ .ctx = s.ctx, .inner = sort };
+    }
+
+    pub fn boolean(s: Solver) Sort {
+        return s.makeSort(c.Z3_mk_bool_sort);
+    }
+
+    pub fn int(s: Solver) Sort {
+        return s.makeSort(c.Z3_mk_int_sort);
+    }
+
+    pub fn real(s: Solver) Sort {
+        return s.makeSort(c.Z3_mk_real_sort);
+    }
+
+    pub fn float(s: Solver, ebits: u32, sbits: u32) Sort {
+        const sort = c.Z3_mk_fpa_sort(s.ctx.inner, ebits, sbits);
+        c.Z3_inc_ref(s.ctx.inner, sort);
+        return .{ .ctx = s.ctx, .inner = sort };
+    }
+
+    pub fn float32(s: Solver) Sort {
+        const sort = c.Z3_mk_fpa_sort(s.ctx.inner, 8, 24);
+        c.Z3_inc_ref(s.ctx.inner, sort);
+        return .{ .ctx = s.ctx, .inner = sort };
+    }
+
+    pub fn double(s: Solver) Sort {
+        const sort = c.Z3_mk_fpa_sort(s.ctx.inner, 11, 53);
+        c.Z3_inc_ref(s.ctx.inner, sort);
+        return .{ .ctx = s.ctx, .inner = sort };
+    }
+
+    pub fn string(s: Solver) Sort {
+        return s.makeSort(c.Z3_mk_string_sort);
+    }
+
+    pub fn bv(s: Solver, sz: u32) Sort {
+        const sort = c.Z3_mk_bv_sort(s.ctx.inner, sz);
+        c.Z3_inc_ref(s.ctx.inner, sort);
+        return .{ .ctx = s.ctx, .inner = sort };
+    }
+
+    pub fn array(s: Solver, domain: Sort, range: Sort) Sort {
+        const sort = c.Z3_mk_array_sort(s.ctx.inner, domain.z3_sort, range.z3_sort);
+        c.Z3_inc_ref(s.ctx.inner, sort);
+        return .{ .ctx = s.ctx, .inner = sort };
+    }
+
+    pub fn set(s: Solver, elt: *const Sort) Sort {
+        const sort = c.Z3_mk_set_sort(s.ctx.inner, elt.z3_sort);
+        c.Z3_inc_ref(s.ctx.inner, sort);
+        return .{ .ctx = s.ctx, .inner = sort };
+    }
+
+    pub fn seq(s: Solver, elt: *const Sort) Sort {
+        const sort = c.Z3_mk_seq_sort(s.ctx.inner, elt.z3_sort);
+        c.Z3_inc_ref(s.ctx.inner, sort);
+        return .{ .ctx = s.ctx, .inner = sort };
     }
 };
 
-const PartialModel = struct {
-    m: *Model,
-    raw: z3.Z3_model,
+pub const Model = struct {
+    ctx: Context,
+    inner: c.Z3_model,
 
-    pub fn deinit(p: *PartialModel) void {
-        z3.Z3_model_dec_ref(p.m.ctx, p.raw);
+    pub fn deinit(m: Model) void {
+        c.Z3_model_dec_ref(m.ctx.inner, m.inner);
     }
 
-    pub fn toString(p: *const PartialModel) []const u8 {
-        const str = z3.Z3_model_to_string(p.m.ctx, p.raw);
-        return std.mem.sliceTo(str, 0);
-    }
+    pub fn eval(m: Model, ast: anytype, model_completion: bool) ?@TypeOf(ast) {
+        var ret = ast;
+        if (c.Z3_model_eval(
+            m.ctx.inner,
+            m.inner,
+            ast.ast,
+            model_completion,
+            &ret.ast,
+        )) {
+            c.Z3_inc_ref(m.ctx.inner, ret.ast);
+            return ret;
+        }
 
-    pub fn isTrue(p: *PartialModel, v: anytype) bool {
-        var value: z3.Z3_ast = undefined;
-        if (!z3.Z3_model_eval(p.m.ctx, p.raw, v.ast, true, &value)) return false;
-        const boolean: Check = @enumFromInt(z3.Z3_get_bool_value(p.m.ctx, value));
-        return boolean == .true;
+        return null;
     }
+};
+
+/// Result of a satisfiability query.
+pub const SatResult = enum(i2) {
+    /// The query is unsatisfiable.
+    unsat = -1,
+    /// The query was interrupted, timed out or otherwise failed.
+    unknown = 0,
+    /// The query is satisfiable.
+    sat = 1,
 };

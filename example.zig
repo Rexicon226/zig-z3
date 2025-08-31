@@ -1,25 +1,26 @@
 const std = @import("std");
 const z3 = @import("z3");
 
-const Model = z3.Model;
-
 pub fn main() !void {
-    basic();
+    var gpa_state: std.heap.DebugAllocator(.{}) = .{};
+    const gpa = gpa_state.allocator();
+    try basic(gpa);
 }
 
-fn basic() void {
-    var model = Model.init(.solver);
+fn basic(gpa: std.mem.Allocator) !void {
+    var solver = try z3.Solver.init(gpa);
+    defer solver.deinit(gpa);
+
+    const x = solver.constant(.int, "x", .{});
+    const y = solver.constant(.int, "y", .{});
+    const xaddy = x.add(&.{y});
+    const ten = solver.int64(10);
+    solver.assert(xaddy.eq(ten));
+    std.debug.print("result: {}\n", .{solver.check()});
+
+    const model = solver.getLastModel();
     defer model.deinit();
-
-    const x = model.constant(.int, "x");
-    const y = model.constant(.int, "y");
-
-    const constraint = model.eq(
-        model.add(&.{ x, y }),
-        model.int(10),
-    );
-
-    model.assert(constraint);
-
-    std.debug.print("result: {}\n", .{model.check()});
+    const xv = model.eval(x, true).?.int64().?;
+    const yv = model.eval(y, true).?.int64().?;
+    std.debug.print("x: {} y: {}\n", .{ xv, yv });
 }

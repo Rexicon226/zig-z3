@@ -101,9 +101,22 @@ pub fn build(b: *std.Build) !void {
         }),
     });
     example.root_module.addImport("z3", z3_bindings);
-
+    // enable running `valgrind --leak-check=full zig-out/bin/main`
+    example.root_module.valgrind = true;
+    b.installArtifact(example);
     const run_example = b.step("example", "Runs the example");
     run_example.dependOn(&b.addRunArtifact(example).step);
+
+    const tests = b.addTest(.{ .root_module = b.createModule(.{
+        .root_source_file = b.path("src/tests.zig"),
+        .optimize = optimize,
+        .target = target,
+        .imports = &.{.{ .name = "z3", .module = z3_bindings }},
+    }) });
+    b.installArtifact(tests);
+    tests.root_module.valgrind = true;
+    const run_tests = b.step("test", "Runs tests");
+    run_tests.dependOn(&b.addRunArtifact(tests).step);
 }
 
 const z3_source_files: []const []const u8 = &.{
