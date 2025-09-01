@@ -8,19 +8,19 @@ pub fn main() !void {
 }
 
 fn basic(gpa: std.mem.Allocator) !void {
-    var solver = try z3.Solver.init(gpa);
-    defer solver.deinit(gpa);
+    var model = try z3.Model.init(.solver, gpa);
+    defer model.deinit(gpa);
 
-    const x = solver.constant(.int, "x", .{});
-    const y = solver.constant(.int, "y", .{});
+    const x = model.constant(.int, "x", .{});
+    const y = model.constant(.int, "y", .{});
     const xaddy = x.add(&.{y});
-    const ten = solver.int64(10);
-    solver.assert(xaddy.eq(ten));
-    std.debug.print("result: {}\n", .{solver.check()});
+    const ten = model.int64(10);
+    model.assert(xaddy.eq(ten));
+    std.debug.print("result: {}\n", .{model.check()});
 
-    const model = solver.getLastModel();
-    defer model.deinit();
-    const xv = model.eval(x, true).?.int64().?;
-    const yv = model.eval(y, true).?.int64().?;
+    const pmodel = model.getLastModel();
+    defer pmodel.deinit();
+    const xv = pmodel.eval(x, true).?.int64().?;
+    const yv = pmodel.eval(y, true).?.int64().?;
     std.debug.print("x: {} y: {}\n", .{ xv, yv });
 }

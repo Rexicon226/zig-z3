@@ -313,142 +313,173 @@ pub const Sort = struct {
     inner: c.Z3_sort,
 };
 
-pub const Solver = struct {
-    ctx: Context,
-    inner: c.Z3_solver,
+const Prover = enum { solver, optimize };
 
-    pub fn initCtx(ctx: Context) Solver {
-        const inner = c.Z3_mk_solver(ctx.inner);
-        c.Z3_solver_inc_ref(ctx.inner, inner);
+pub const Model = struct {
+    ctx: Context,
+    inner: union(Prover) {
+        solver: c.Z3_solver,
+        optimize: c.Z3_optimize,
+    },
+
+    pub fn initCtx(comptime p: Prover, ctx: Context) Model {
+        const inner = @unionInit(@FieldType(Model, "inner"), @tagName(p), switch (p) {
+            .solver => s: {
+                const solver = c.Z3_mk_solver(ctx.inner);
+                c.Z3_solver_inc_ref(ctx.inner, solver);
+                break :s solver;
+            },
+            .optimize => o: {
+                const optimize = c.Z3_mk_optimize(ctx.inner);
+                c.Z3_optimize_inc_ref(ctx.inner, optimize);
+                break :o optimize;
+            },
+        });
         return .{ .ctx = ctx, .inner = inner };
     }
 
-    pub fn initConfig(allocator: std.mem.Allocator, config_kvs: Context.ConfigKvs) !Solver {
-        return .initCtx(try .init(allocator, config_kvs));
+    pub fn initConfig(comptime p: Prover, allocator: std.mem.Allocator, config_kvs: Context.ConfigKvs) !Model {
+        return .initCtx(p, try .init(allocator, config_kvs));
     }
 
-    pub fn init(gpa: std.mem.Allocator) !Solver {
-        return initConfig(gpa, &.{.{ "proof", "true" }});
+    pub fn init(comptime p: Prover, gpa: std.mem.Allocator) !Model {
+        return initConfig(p, gpa, if (p == .solver) &.{.{ "proof", "true" }} else &.{});
     }
 
-    pub fn deinit(s: Solver, allocator: std.mem.Allocator) void {
-        c.Z3_solver_dec_ref(s.ctx.inner, s.inner);
-        s.ctx.deinit(allocator);
+    pub fn deinit(m: Model, allocator: std.mem.Allocator) void {
+        switch (m.inner) {
+            .solver => |s| c.Z3_solver_dec_ref(m.ctx.inner, s),
+            .optimize => |o| c.Z3_optimize_dec_ref(m.ctx.inner, o),
+        }
+        m.ctx.deinit(allocator);
     }
 
     /// Panics if
     /// 1. `check()` wasn't ran before calling `getLastModel()`.
     /// 2. The last `check()` call didn't return `true`.
-    pub fn getLastModel(s: Solver) Model {
-        const m = c.Z3_solver_get_model(s.ctx.inner, s.inner);
-        c.Z3_model_inc_ref(s.ctx.inner, m);
-        return .{ .ctx = s.ctx, .inner = m };
+    pub fn getLastModel(m: Model) PartialModel {
+        const model = switch (m.inner) {
+            .solver => |x| c.Z3_solver_get_model(m.ctx.inner, x),
+            .optimize => |x| c.Z3_optimize_get_model(m.ctx.inner, x),
+        };
+        c.Z3_model_inc_ref(m.ctx.inner, model);
+        return .{ .ctx = m.ctx, .inner = model };
     }
 
-    pub fn assert(s: Solver, ast: anytype) void {
-        c.Z3_solver_assert(s.ctx.inner, s.inner, ast.ast);
+    pub fn assert(m: Model, ast: anytype) void {
+        switch (m.inner) {
+            .solver => |x| c.Z3_solver_assert(m.ctx.inner, x, ast.ast),
+            .optimize => |x| c.Z3_optimize_assert(m.ctx.inner, x, ast.ast),
+        }
     }
 
-    pub fn check(s: Solver) SatResult {
-        return @enumFromInt(c.Z3_solver_check(s.ctx.inner, s.inner));
+    pub fn check(m: Model) SatResult {
+        return @enumFromInt(switch (m.inner) {
+            .solver => |x| c.Z3_solver_check(m.ctx.inner, x),
+            .optimize => |x| c.Z3_optimize_check(m.ctx.inner, x, 0, null),
+        });
     }
 
-    pub fn constant(s: Solver, comptime tag: AstKind, name: ?[:0]const u8, args: anytype) tag.Type() {
-        const sort = s.ctx.getSort(tag, args);
-        const sym = Symbol.asZ3(.{ .string = name }, s.ctx);
-        const ast = c.Z3_mk_const(s.ctx.inner, sym, sort);
-        c.Z3_inc_ref(s.ctx.inner, ast);
-        return .{ .ctx = s.ctx, .ast = ast };
+    pub fn constant(m: Model, comptime tag: AstKind, name: ?[:0]const u8, args: anytype) tag.Type() {
+        const sort = m.ctx.getSort(tag, args);
+        const sym = Symbol.asZ3(.{ .string = name }, m.ctx);
+        const ast = c.Z3_mk_const(m.ctx.inner, sym, sort);
+        c.Z3_inc_ref(m.ctx.inner, ast);
+        return .{ .ctx = m.ctx, .ast = ast };
     }
 
-    pub fn int64(s: Solver, i: i64) Int {
-        const sort = s.ctx.getSort(.int, .{});
-        const ast = c.Z3_mk_int64(s.ctx.inner, i, sort);
-        c.Z3_inc_ref(s.ctx.inner, ast);
-        return .{ .ctx = s.ctx, .ast = ast };
+    pub fn int64(m: Model, i: i64) Int {
+        const sort = m.ctx.getSort(.int, .{});
+        const ast = c.Z3_mk_int64(m.ctx.inner, i, sort);
+        c.Z3_inc_ref(m.ctx.inner, ast);
+        return .{ .ctx = m.ctx, .ast = ast };
     }
 
-    pub fn bvFromInt64(s: Solver, i: i64, sz: u32) Bitvector {
-        const sort = s.ctx.getSort(.bv, .{sz});
-        const ast = c.Z3_mk_int64(s.ctx.inner, i, sort);
-        c.Z3_inc_ref(s.ctx.inner, ast);
-        return .{ .ctx = s.ctx, .ast = ast };
+    pub fn bvFromInt64(m: Model, i: i64, sz: u32) Bitvector {
+        const sort = m.ctx.getSort(.bv, .{sz});
+        const ast = c.Z3_mk_int64(m.ctx.inner, i, sort);
+        c.Z3_inc_ref(m.ctx.inner, ast);
+        return .{ .ctx = m.ctx, .ast = ast };
     }
 
-    fn makeSort(s: Solver, comptime func: @TypeOf(c.Z3_mk_bool_sort)) Sort {
-        const sort = func(s.ctx.inner);
-        c.Z3_inc_ref(s.ctx.inner, sort);
-        return .{ .ctx = s.ctx, .inner = sort };
+    fn makeSort(m: Model, comptime func: @TypeOf(c.Z3_mk_bool_sort)) Sort {
+        const sort = func(m.ctx.inner);
+        c.Z3_inc_ref(m.ctx.inner, sort);
+        return .{ .ctx = m.ctx, .inner = sort };
     }
 
-    pub fn boolean(s: Solver) Sort {
-        return s.makeSort(c.Z3_mk_bool_sort);
+    pub fn boolean(m: Model) Sort {
+        return m.makeSort(c.Z3_mk_bool_sort);
     }
 
-    pub fn int(s: Solver) Sort {
-        return s.makeSort(c.Z3_mk_int_sort);
+    pub fn int(m: Model) Sort {
+        return m.makeSort(c.Z3_mk_int_sort);
     }
 
-    pub fn real(s: Solver) Sort {
-        return s.makeSort(c.Z3_mk_real_sort);
+    pub fn real(m: Model) Sort {
+        return m.makeSort(c.Z3_mk_real_sort);
     }
 
-    pub fn float(s: Solver, ebits: u32, sbits: u32) Sort {
-        const sort = c.Z3_mk_fpa_sort(s.ctx.inner, ebits, sbits);
-        c.Z3_inc_ref(s.ctx.inner, sort);
-        return .{ .ctx = s.ctx, .inner = sort };
+    pub fn float(m: Model, ebits: u32, sbits: u32) Sort {
+        const sort = c.Z3_mk_fpa_sort(m.ctx.inner, ebits, sbits);
+        c.Z3_inc_ref(m.ctx.inner, sort);
+        return .{ .ctx = m.ctx, .inner = sort };
     }
 
-    pub fn float32(s: Solver) Sort {
-        const sort = c.Z3_mk_fpa_sort(s.ctx.inner, 8, 24);
-        c.Z3_inc_ref(s.ctx.inner, sort);
-        return .{ .ctx = s.ctx, .inner = sort };
+    pub fn float32(m: Model) Sort {
+        const sort = c.Z3_mk_fpa_sort(m.ctx.inner, 8, 24);
+        c.Z3_inc_ref(m.ctx.inner, sort);
+        return .{ .ctx = m.ctx, .inner = sort };
     }
 
-    pub fn double(s: Solver) Sort {
-        const sort = c.Z3_mk_fpa_sort(s.ctx.inner, 11, 53);
-        c.Z3_inc_ref(s.ctx.inner, sort);
-        return .{ .ctx = s.ctx, .inner = sort };
+    pub fn double(m: Model) Sort {
+        const sort = c.Z3_mk_fpa_sort(m.ctx.inner, 11, 53);
+        c.Z3_inc_ref(m.ctx.inner, sort);
+        return .{ .ctx = m.ctx, .inner = sort };
     }
 
-    pub fn string(s: Solver) Sort {
-        return s.makeSort(c.Z3_mk_string_sort);
+    pub fn string(m: Model) Sort {
+        return m.makeSort(c.Z3_mk_string_sort);
     }
 
-    pub fn bv(s: Solver, sz: u32) Sort {
-        const sort = c.Z3_mk_bv_sort(s.ctx.inner, sz);
-        c.Z3_inc_ref(s.ctx.inner, sort);
-        return .{ .ctx = s.ctx, .inner = sort };
+    pub fn bv(m: Model, sz: u32) Sort {
+        const sort = c.Z3_mk_bv_sort(m.ctx.inner, sz);
+        c.Z3_inc_ref(m.ctx.inner, sort);
+        return .{ .ctx = m.ctx, .inner = sort };
     }
 
-    pub fn array(s: Solver, domain: Sort, range: Sort) Sort {
-        const sort = c.Z3_mk_array_sort(s.ctx.inner, domain.z3_sort, range.z3_sort);
-        c.Z3_inc_ref(s.ctx.inner, sort);
-        return .{ .ctx = s.ctx, .inner = sort };
+    pub fn array(m: Model, domain: Sort, range: Sort) Sort {
+        const sort = c.Z3_mk_array_sort(m.ctx.inner, domain.z3_sort, range.z3_sort);
+        c.Z3_inc_ref(m.ctx.inner, sort);
+        return .{ .ctx = m.ctx, .inner = sort };
     }
 
-    pub fn set(s: Solver, elt: *const Sort) Sort {
-        const sort = c.Z3_mk_set_sort(s.ctx.inner, elt.z3_sort);
-        c.Z3_inc_ref(s.ctx.inner, sort);
-        return .{ .ctx = s.ctx, .inner = sort };
+    pub fn set(m: Model, elt: *const Sort) Sort {
+        const sort = c.Z3_mk_set_sort(m.ctx.inner, elt.z3_sort);
+        c.Z3_inc_ref(m.ctx.inner, sort);
+        return .{ .ctx = m.ctx, .inner = sort };
     }
 
-    pub fn seq(s: Solver, elt: *const Sort) Sort {
-        const sort = c.Z3_mk_seq_sort(s.ctx.inner, elt.z3_sort);
-        c.Z3_inc_ref(s.ctx.inner, sort);
-        return .{ .ctx = s.ctx, .inner = sort };
+    pub fn seq(m: Model, elt: *const Sort) Sort {
+        const sort = c.Z3_mk_seq_sort(m.ctx.inner, elt.z3_sort);
+        c.Z3_inc_ref(m.ctx.inner, sort);
+        return .{ .ctx = m.ctx, .inner = sort };
+    }
+
+    pub fn getReasonUnknown(m: Model) ?[*:0]const u8 {
+        return c.Z3_optimize_get_reason_unknown(m.ctx.inner, m.inner.optimize);
     }
 };
 
-pub const Model = struct {
+pub const PartialModel = struct {
     ctx: Context,
     inner: c.Z3_model,
 
-    pub fn deinit(m: Model) void {
+    pub fn deinit(m: PartialModel) void {
         c.Z3_model_dec_ref(m.ctx.inner, m.inner);
     }
 
-    pub fn eval(m: Model, ast: anytype, model_completion: bool) ?@TypeOf(ast) {
+    pub fn eval(m: PartialModel, ast: anytype, model_completion: bool) ?@TypeOf(ast) {
         var ret = ast;
         if (c.Z3_model_eval(
             m.ctx.inner,

@@ -9,7 +9,7 @@ test "context" {
 }
 
 test "solve for model" {
-    var solver: z3.Solver = try .init(gpa);
+    var solver: z3.Model = try .init(.solver, gpa);
     defer solver.deinit(gpa);
 
     const x = solver.constant(.int, "x", .{});
@@ -38,7 +38,7 @@ test "solve for model" {
 }
 
 test "bitvectors" {
-    var solver: z3.Solver = try .init(gpa);
+    var solver: z3.Model = try .init(.solver, gpa);
     defer solver.deinit(gpa);
 
     const a = solver.constant(.bv, "a", .{64});
@@ -58,4 +58,29 @@ test "bitvectors" {
     try testing.expect(av > bv);
     try testing.expect(bv > 2);
     try testing.expect(bv + 2 > av);
+}
+
+test "optimize unknown" {
+    var optimize: z3.Model = try .initConfig(
+        .optimize,
+        gpa,
+        &.{.{ "timeout", "1" }}, // 1 ms timeout
+    );
+    defer optimize.deinit(gpa);
+
+    // An open problem: find a model for x^3 + y^3 + z^3 == 42
+    // See: https://en.wikipedia.org/wiki/Sums_of_three_cubes
+    const x = optimize.constant(.int, "x", .{});
+    const y = optimize.constant(.int, "y", .{});
+    const z = optimize.constant(.int, "z", .{});
+    const x_cube = x.mul(&.{ x, x });
+    const y_cube = y.mul(&.{ y, y });
+    const z_cube = z.mul(&.{ z, z });
+    const sum_of_cubes = x_cube.add(&.{ y_cube, z_cube });
+    const sum_of_cubes_is_42 = sum_of_cubes.eq(optimize.int64(42));
+
+    optimize.assert(sum_of_cubes_is_42);
+
+    try testing.expectEqual(.unknown, optimize.check());
+    try testing.expect(optimize.getReasonUnknown() != null);
 }
