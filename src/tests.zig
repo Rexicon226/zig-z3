@@ -1,23 +1,23 @@
 const z3 = @import("z3");
 const std = @import("std");
 const testing = std.testing;
-const gpa = testing.allocator;
+// const gpa = testing.allocator;
 
 test "context" {
-    var ctx = try z3.Context.init(gpa, &.{.{ "proof", "true" }});
-    defer ctx.deinit(gpa);
+    var ctx = z3.Context.init(&.{.{ .proof = true }});
+    defer ctx.deinit();
 }
 
 test "solve for model" {
-    var solver: z3.Model = try .init(.solver, gpa);
-    defer solver.deinit(gpa);
+    var solver: z3.Model = .initSolver();
+    defer solver.deinit();
 
     const x = solver.constant(.int, "x", .{});
     const y = solver.constant(.int, "y", .{});
 
-    const zero = solver.int64(0);
-    const two = solver.int64(2);
-    const seven = solver.int64(7);
+    const zero = solver.fromInt64(0);
+    const two = solver.fromInt64(2);
+    const seven = solver.fromInt64(7);
 
     solver.assert(x.gt(y));
     solver.assert(y.gt(zero));
@@ -29,8 +29,8 @@ test "solve for model" {
 
     const model = solver.getLastModel();
     defer model.deinit();
-    const xv = model.eval(x, true).?.int64().?;
-    const yv = model.eval(y, true).?.int64().?;
+    const xv = model.eval(x, true).?.asInt64().?;
+    const yv = model.eval(y, true).?.asInt64().?;
 
     try testing.expect(xv > yv);
     try testing.expectEqual(2, @mod(yv, 7));
@@ -38,8 +38,8 @@ test "solve for model" {
 }
 
 test "bitvectors" {
-    var solver: z3.Model = try .init(.solver, gpa);
-    defer solver.deinit(gpa);
+    var solver: z3.Model = .initSolver();
+    defer solver.deinit();
 
     const a = solver.constant(.bv, "a", .{64});
     const b = solver.constant(.bv, "b", .{64});
@@ -53,20 +53,19 @@ test "bitvectors" {
 
     const model = solver.getLastModel();
     defer model.deinit();
-    const av = model.eval(a, true).?.int64().?;
-    const bv = model.eval(b, true).?.int64().?;
+    const av = model.eval(a, true).?.asInt64().?;
+    const bv = model.eval(b, true).?.asInt64().?;
     try testing.expect(av > bv);
     try testing.expect(bv > 2);
     try testing.expect(bv + 2 > av);
 }
 
 test "optimize unknown" {
-    var optimize: z3.Model = try .initConfig(
+    var optimize: z3.Model = .initConfig(
         .optimize,
-        gpa,
-        &.{.{ "timeout", "1" }}, // 1 ms timeout
+        &.{.{ .timeout = 1 }}, // 1 ms timeout
     );
-    defer optimize.deinit(gpa);
+    defer optimize.deinit();
 
     // An open problem: find a model for x^3 + y^3 + z^3 == 42
     // See: https://en.wikipedia.org/wiki/Sums_of_three_cubes
@@ -77,7 +76,7 @@ test "optimize unknown" {
     const y_cube = y.mul(&.{ y, y });
     const z_cube = z.mul(&.{ z, z });
     const sum_of_cubes = x_cube.add(&.{ y_cube, z_cube });
-    const sum_of_cubes_is_42 = sum_of_cubes.eq(optimize.int64(42));
+    const sum_of_cubes_is_42 = sum_of_cubes.eq(optimize.fromInt64(42));
 
     optimize.assert(sum_of_cubes_is_42);
 
