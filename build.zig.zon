@@ -9,14 +9,15 @@
         "generated",
         "src",
     },
+    .minimum_zig_version = "0.15.0",
     .dependencies = .{
         .z3 = .{
             .url = "git+https://github.com/Z3Prover/z3#3c47fd96cf5645d0c42b2c819d9e9a84380aa721",
             .hash = "N-V-__8AAMIAsgHbQYS-wmuqPSIv4_u-lZ2-PVGXwU05bWMb",
         },
         .gmp = .{
-            .url = "git+https://github.com/Rexicon226/zig-gmp#2c07dafc4fe67e81f42923a307d04a0cbfcefdf9",
-            .hash = "gmp-0.1.0-jHjCQiT9AQBH0_YPvUaTn7pNQrw_KtYJysievbfQrlOg",
+            .url = "git+https://github.com/Rexicon226/zig-gmp#8bc0fa17cf82f786dd76a5b5ced0de2f5f154f2d",
+            .hash = "gmp-0.1.0-jHjCQuD9AQBh_YHrf2m5j0BzKiqyoM9mcpXGqCclf6iu",
         },
     },
 }

@@ -16,11 +16,11 @@ pub fn build(b: *std.Build) !void {
         .root_module = b.createModule(.{
             .target = target,
             .optimize = optimize,
+            .link_libcpp = true,
         }),
     });
     b.installArtifact(z3);
 
-    z3.linkLibCpp();
     z3.linkLibrary(gmp.artifact("gmp"));
     z3.addIncludePath(src.path("src"));
     z3.addIncludePath(b.path("generated"));
@@ -93,10 +93,12 @@ pub fn build(b: *std.Build) !void {
     z3_bindings.addImport("z3", z3_mod);
 
     const example = b.addExecutable(.{
-        .root_source_file = b.path("example.zig"),
         .name = "example",
-        .target = target,
-        .optimize = optimize,
+        .root_module = b.createModule(.{
+            .target = target,
+            .optimize = optimize,
+            .root_source_file = b.path("example.zig"),
+        }),
     });
     example.root_module.addImport("z3", z3_bindings);
 
