@@ -69,13 +69,13 @@ pub const Context = struct {
         c.Z3_del_context(ctx.inner);
     }
 
-    fn getSort(ctx: *Context, comptime tag: AstKind, args: anytype) Sort {
+    fn getSort(ctx: *Context, comptime tag: SortKind, args: anytype) Sort {
         return ctx.getSortByName(tag, "Z3_mk_" ++ @tagName(tag) ++ "_sort", args);
     }
 
     fn getSortByName(
         ctx: *Context,
-        comptime tag: AstKind,
+        comptime tag: SortKind,
         comptime mk_fn_name: []const u8,
         args: anytype,
     ) Sort {
@@ -95,80 +95,66 @@ pub const Context = struct {
     }
 };
 
-pub const AstKind = enum {
-    bool,
-    int,
-    real,
-    float,
-    float32,
-    float64,
-    string,
-    bv,
-    array,
-    set,
-    seq,
+pub const SortKind = enum(c_uint) {
+    /// `Z3_UNINTERPRETED_SORT`
+    uninterpreted = c.Z3_UNINTERPRETED_SORT,
+    /// `Z3_BOOL_SORT`
+    bool = c.Z3_BOOL_SORT,
+    /// `Z3_INT_SORT`
+    int = c.Z3_INT_SORT,
+    /// `Z3_REAL_SORT`
+    real = c.Z3_REAL_SORT,
+    /// `Z3_BV_SORT`
+    bv = c.Z3_BV_SORT,
+    /// `Z3_ARRAY_SORT`
+    array = c.Z3_ARRAY_SORT,
+    /// `Z3_DATATYPE_SORT`
+    datatype = c.Z3_DATATYPE_SORT,
+    /// `Z3_RELATION_SORT`
+    relation = c.Z3_RELATION_SORT,
+    /// `Z3_FINITE_DOMAIN_SORT`
+    finite_domain = c.Z3_FINITE_DOMAIN_SORT,
+    /// `Z3_FLOATING_POINT_SORT`
+    floating_point = c.Z3_FLOATING_POINT_SORT,
+    /// `Z3_ROUNDING_MODE_SORT`
+    rounding_mode = c.Z3_ROUNDING_MODE_SORT,
+    /// `Z3_SEQ_SORT`
+    seq = c.Z3_SEQ_SORT,
+    /// `Z3_RE_SORT`
+    re = c.Z3_RE_SORT,
+    /// `Z3_UNKNOWN_SORT`
+    unknown = c.Z3_UNKNOWN_SORT,
 
-    fn Data(tag: AstKind) type {
-        return switch (tag) {
+    inline fn Data(comptime tag: SortKind) type {
+        comptime return switch (tag) {
             .bool => Bool,
             .int => Int,
             .real => Real,
-            .float => Float,
-            .float32 => Float32,
-            .float64 => Float64,
-            .string => String,
+            .floating_point => Float,
             .bv => Bitvector,
             .array => Array,
-            .set => Set,
             .seq => Seq,
-        };
-    }
-
-    pub fn isNumeric(tag: AstKind) bool {
-        return switch (tag) {
-            .int,
-            .real,
-            .float,
-            .float32,
-            .float64,
-            => true,
-            else => false,
-        };
-    }
-
-    pub fn fromAst(lhs: anytype) AstKind {
-        return switch (c.Z3_get_sort_kind(lhs.ctx.inner, c.Z3_get_sort(lhs.ctx.inner, lhs.ast))) {
-            c.Z3_BOOL_SORT => .bool,
-            c.Z3_INT_SORT => .int,
-            c.Z3_REAL_SORT => .real,
-            c.Z3_BV_SORT => .bv,
-            c.Z3_ARRAY_SORT => .array,
-            c.Z3_FLOATING_POINT_SORT => .float,
-            c.Z3_SEQ_SORT => .seq,
-            c.Z3_RE_SORT,
-            c.Z3_CHAR_SORT,
-            c.Z3_TYPE_VAR,
-            c.Z3_UNKNOWN_SORT,
-            c.Z3_DATATYPE_SORT,
-            c.Z3_RELATION_SORT,
-            c.Z3_FINITE_DOMAIN_SORT,
-            c.Z3_ROUNDING_MODE_SORT,
-            => @panic("unimplemented"),
-            else => unreachable,
+            else => @compileError("TODO: Data() for " ++ @tagName(tag)),
         };
     }
 };
+
+const A = Ast;
 
 pub const Bool = struct {
     ctx: *Context,
     ast: c.Z3_ast,
 
-    const A = Ast(.bool);
+    pub const toString = A.toString;
+    pub const eq = A.eq;
+
     pub const @"and" = A.@"and";
     pub const @"or" = A.@"or";
+
     pub const xor = A.xor;
     pub const iff = A.iff;
     pub const implies = A.implies;
+
     pub const not = A.not;
     pub const ite = A.ite;
 };
@@ -177,8 +163,9 @@ pub const Int = struct {
     ctx: *Context,
     ast: c.Z3_ast,
 
-    const A = Ast(.int);
     pub const toString = A.toString;
+    pub const eq = A.eq;
+
     pub const add = A.add;
     pub const sub = A.sub;
     pub const mul = A.mul;
@@ -191,7 +178,6 @@ pub const Int = struct {
     pub const le = A.le;
     pub const gt = A.gt;
     pub const ge = A.ge;
-    pub const eq = A.eq;
 
     pub const asInt64 = A.asInt64;
 };
@@ -199,43 +185,22 @@ pub const Real = struct {
     ctx: *Context,
     ast: c.Z3_ast,
 
-    const A = Ast(.real);
     pub const toString = A.toString;
+    pub const eq = A.eq;
 };
 pub const Float = struct {
     ctx: *Context,
     ast: c.Z3_ast,
 
-    const A = Ast(.float);
     pub const toString = A.toString;
-};
-pub const Float32 = struct {
-    ctx: *Context,
-    ast: c.Z3_ast,
-
-    const A = Ast(.float32);
-    pub const toString = A.toString;
-};
-pub const Float64 = struct {
-    ctx: *Context,
-    ast: c.Z3_ast,
-
-    const A = Ast(.float64);
-    pub const toString = A.toString;
-};
-pub const String = struct {
-    ctx: *Context,
-    ast: c.Z3_ast,
-
-    const A = Ast(.string);
-    pub const toString = A.toString;
+    pub const eq = A.eq;
 };
 pub const Bitvector = struct {
     ctx: *Context,
     ast: c.Z3_ast,
 
-    const A = Ast(.bv);
     pub const toString = A.toString;
+    pub const eq = A.eq;
 
     pub const bvadd = A.bvadd;
     pub const bvsub = A.bvsub;
@@ -260,51 +225,62 @@ pub const Array = struct {
     ctx: *Context,
     ast: c.Z3_ast,
 
-    const A = Ast(.array);
     pub const toString = A.toString;
+    pub const eq = A.eq;
 
     pub const select = A.select;
+    pub const store = A.store;
     pub const asSet = A.asSet;
 };
 pub const Set = struct {
     ctx: *Context,
     ast: c.Z3_ast,
 
-    const A = Ast(.set);
     pub const toString = A.toString;
+    pub const eq = A.eq;
 };
 pub const Seq = struct {
     ctx: *Context,
     ast: c.Z3_ast,
 
-    const A = Ast(.seq);
     pub const toString = A.toString;
 };
-
 pub const Dynamic = struct {
     ctx: *Context,
     ast: c.Z3_ast,
-    ast_kind: AstKind,
+
+    pub const toString = A.toString;
+    pub const eq = A.eq;
+
+    pub fn sortKind(self: Dynamic) SortKind {
+        return @enumFromInt(c.Z3_get_sort_kind(
+            self.ctx.inner,
+            c.Z3_get_sort(self.ctx.inner, self.ast),
+        ));
+    }
 
     pub fn asSet(self: Dynamic) ?Set {
-        return switch (self.ast_kind) {
-            .array => switch (c.Z3_get_sort_kind(
-                self.ctx.inner,
-                c.Z3_get_array_sort_range(
+        switch (self.sortKind()) {
+            .array => {
+                const sort_kind: SortKind = @enumFromInt(c.Z3_get_sort_kind(
                     self.ctx.inner,
-                    c.Z3_get_sort(self.ctx.inner, self.ast),
-                ),
-            )) {
-                c.Z3_BOOL_SORT => return .{ .ctx = self.ctx, .ast = self.ast },
-                else => null,
+                    c.Z3_get_array_sort_range(
+                        self.ctx.inner,
+                        c.Z3_get_sort(self.ctx.inner, self.ast),
+                    ),
+                ));
+                switch (sort_kind) {
+                    .bool => return .{ .ctx = self.ctx, .ast = self.ast },
+                    else => return null,
+                }
             },
-            else => null,
-        };
+            else => return null,
+        }
     }
 };
 
-pub fn Ast(comptime ast_kind: AstKind) type {
-    return struct {
+// zig fmt: off
+const Ast = struct {
         pub fn deinit(self: anytype) void {
             c.Z3_dec_ref(self.ctx.inner, self.ast);
         }
@@ -312,9 +288,9 @@ pub fn Ast(comptime ast_kind: AstKind) type {
             return if (c.Z3_ast_to_string(self.ctx.inner, self.ast)) |s| std.mem.sliceTo(s, 0) else null;
         }
 
-        inline fn verify(comptime ok: bool, comptime message: []const u8) void {
+        inline fn verify(comptime ok: bool, T: type, comptime message: []const u8) void {
             comptime if (!ok)
-                @compileError(std.fmt.comptimePrint(message ++ ".  found '{t}'", .{ast_kind}));
+                @compileError(std.fmt.comptimePrint(message ++ ".  found '{s}'", .{@typeName(T)}));
         }
         inline fn Child(T: type) type {
             return switch (@typeInfo(T)) {
@@ -322,12 +298,15 @@ pub fn Ast(comptime ast_kind: AstKind) type {
                 else => T,
             };
         }
-        fn binop(R: type, lhs: anytype, rhs: Child(@TypeOf(lhs)), func: @TypeOf(c.Z3_mk_div)) R {
+        fn binopAny(R: type, lhs: anytype, rhs: anytype, func: @TypeOf(c.Z3_mk_div)) R {
             const ast = func(lhs.ctx.inner, lhs.ast, rhs.ast);
             c.Z3_inc_ref(lhs.ctx.inner, ast);
             return .{ .ast = ast, .ctx = lhs.ctx };
         }
-        fn varop(lhs: anytype, rhss: []const Child(@TypeOf(lhs)), comptime func: @TypeOf(c.Z3_mk_add)) Child(@TypeOf(lhs)) {
+        fn binop(R: type, lhs: anytype, rhs: Child(@TypeOf(lhs)), func: @TypeOf(c.Z3_mk_div)) R {
+            return binopAny(R, lhs, rhs, func);
+        }
+        fn varop(R: type, lhs: anytype, rhss: []const Child(@TypeOf(lhs)), comptime func: @TypeOf(c.Z3_mk_add)) R {
             var buf: [16]c.Z3_ast = undefined;
             if (buf.len < rhss.len + 1) @panic("varop only supports up to 15 rhs args.");
             buf[0] = lhs.ast;
@@ -338,13 +317,16 @@ pub fn Ast(comptime ast_kind: AstKind) type {
         }
 
         // *** Numeric ops ***
+        inline fn verifyNumeric(T: type) void {
+            verify(T == Int or T == Float or T == Real, T, "expected numeric type");
+        }
         fn numericBinop(R: type, lhs: anytype, rhs: Child(@TypeOf(lhs)), func: @TypeOf(c.Z3_mk_div)) R {
-            verify(ast_kind.isNumeric(), "expected numeric ast kind");
+            verifyNumeric(Child(@TypeOf(lhs)));
             return binop(R, lhs, rhs, func);
         }
         fn numericVarop(lhs: anytype, rhss: []const Child(@TypeOf(lhs)), comptime func: @TypeOf(c.Z3_mk_add)) Child(@TypeOf(lhs)) {
-            verify(ast_kind.isNumeric(), "expected numeric ast kind");
-            return varop(lhs, rhss, func);
+            verifyNumeric(Child(@TypeOf(lhs)));
+            return varop(Child(@TypeOf(lhs)), lhs, rhss, func);
         }
 
         pub fn div(lhs: anytype, rhs: Child(@TypeOf(lhs))) Child(@TypeOf(lhs)) {
@@ -373,7 +355,7 @@ pub fn Ast(comptime ast_kind: AstKind) type {
             return numericBinop(Bool, lhs, rhs, c.Z3_mk_ge);
         }
         pub fn eq(lhs: anytype, rhs: Child(@TypeOf(lhs))) Bool {
-            return numericBinop(Bool, lhs, rhs, c.Z3_mk_eq);
+            return binop(Bool, lhs, rhs, c.Z3_mk_eq);
         }
 
         pub fn add(lhs: anytype, rhss: []const Child(@TypeOf(lhs))) Child(@TypeOf(lhs)) {
@@ -397,9 +379,7 @@ pub fn Ast(comptime ast_kind: AstKind) type {
         }
 
         // *** Bitvector ops ***
-
         fn bvBinop(R: type, lhs: Bitvector, rhs: Bitvector, func: @TypeOf(c.Z3_mk_bvadd)) R {
-            verify(ast_kind == .bv, "expected bitvector (bv) ast kind");
             return binop(R, lhs, rhs, func);
         }
 
@@ -471,11 +451,17 @@ pub fn Ast(comptime ast_kind: AstKind) type {
 
         // *** Array ops ***
         pub fn select(lhs: anytype, rhs: anytype) Dynamic {
-            return .{
-                .ctx = lhs.ctx,
-                .ast = c.Z3_mk_select(lhs.ctx.inner, lhs.ast, rhs.ast),
-                .ast_kind = .fromAst(lhs),
-            };
+            return binopAny(Dynamic, lhs, rhs, c.Z3_mk_select);
+        }
+        pub fn store(lhs: anytype, index: Int, value: anytype) Child(@TypeOf(lhs)) {
+            const ast = c.Z3_mk_store(
+                lhs.ctx.inner,
+                lhs.ast,
+                index.ast,
+                value.ast,
+            );
+            c.Z3_inc_ref(lhs.ctx.inner, ast);
+            return .{ .ast = ast, .ctx = lhs.ctx };
         }
 
         // *** Bool ops ***
@@ -499,7 +485,7 @@ pub fn Ast(comptime ast_kind: AstKind) type {
         pub fn not(op: Bool) Bool {
             const ast = c.Z3_mk_not(op.ctx.inner, op.ast);
             c.Z3_inc_ref(op.ctx.inner, ast);
-            return .{ .ast = ast, .ctx = &op.ctx };
+            return .{ .ast = ast, .ctx = op.ctx };
         }
 
         /// Create an AST node representing an if-then-else. If `predicate` is true,
@@ -511,8 +497,8 @@ pub fn Ast(comptime ast_kind: AstKind) type {
             c.Z3_inc_ref(predicate.ctx.inner, ast);
             return .{ .ast = ast, .ctx = predicate.ctx };
         }
-    };
-}
+};
+// zig fmt: on
 
 pub const Symbol = union(enum) {
     int: i32,
@@ -616,7 +602,7 @@ pub const Model = struct {
         return std.mem.sliceTo(str, 0);
     }
 
-    pub fn constant(m: *Model, comptime tag: AstKind, name: ?[:0]const u8, args: anytype) tag.Data() {
+    pub fn constant(m: *Model, comptime tag: SortKind, name: ?[:0]const u8, args: anytype) tag.Data() {
         const sort = m.ctx.getSort(tag, args);
         const sym = Symbol.asZ3(.{ .string = name }, &m.ctx);
         const ast = c.Z3_mk_const(m.ctx.inner, sym, sort.inner);
@@ -716,6 +702,13 @@ pub const Model = struct {
 
     pub fn getReasonUnknown(m: Model) ?[*:0]const u8 {
         return c.Z3_optimize_get_reason_unknown(m.ctx.inner, m.inner.optimize);
+    }
+
+    pub fn push(m: Model) void {
+        c.Z3_solver_push(m.ctx.inner, m.inner.solver);
+    }
+    pub fn pop(m: Model, n: c_uint) void {
+        c.Z3_solver_pop(m.ctx.inner, m.inner.solver, n);
     }
 };
 

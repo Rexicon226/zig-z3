@@ -115,6 +115,7 @@ pub fn build(b: *std.Build) !void {
     }) });
     b.installArtifact(tests);
     tests.root_module.valgrind = true;
+    tests.filters = if (b.option([]const u8, "test-filter", "test filter")) |f| b.dupeStrings(&.{f}) else &.{};
     const run_tests = b.step("test", "Runs tests");
     run_tests.dependOn(&b.addRunArtifact(tests).step);
 }

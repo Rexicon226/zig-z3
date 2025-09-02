@@ -1,7 +1,6 @@
 const z3 = @import("z3");
 const std = @import("std");
 const testing = std.testing;
-// const gpa = testing.allocator;
 
 test "context" {
     var ctx = z3.Context.init(&.{.{ .proof = true }});
@@ -106,4 +105,30 @@ test "ite" {
 
     const ite = solver.false().ite(solver.fromInt(0), solver.fromInt(1));
     try testing.expectEqualStrings("(ite false 0 1)", ite.toString().?);
+}
+
+test "array example 1" {
+    var solver: z3.Model = .initSolver();
+    defer solver.deinit();
+    const int_sort = solver.int().inner;
+    const a1 = solver.constant(.array, "a1", .{ int_sort, int_sort });
+    const a2 = solver.constant(.array, "a2", .{ int_sort, int_sort });
+    const idx1 = solver.constant(.int, "idx1", .{});
+    const idx2 = solver.constant(.int, "idx2", .{});
+    const idx3 = solver.constant(.int, "idx3", .{});
+    const v1 = solver.constant(.int, "v1", .{});
+    const v2 = solver.constant(.int, "v2", .{});
+    const st1 = a1.store(idx1, v1);
+    const st2 = a2.store(idx2, v2);
+    const sel1 = a1.select(idx3);
+    const sel2 = a2.select(idx3);
+    const antecedent = st1.eq(st2);
+    // idx1 = idx3 or  idx2 = idx3 or select(a1, idx3) = select(a2, idx3)
+    const consequent = idx1.eq(idx3).@"or"(&.{ idx2.eq(idx3), sel1.eq(sel2) });
+    const thm = antecedent.implies(consequent);
+    // prove store(a1, idx1, v1) = store(a2, idx2, v2) implies (idx1 = idx3 or idx2 = idx3 or select(a1, idx3) = select(a2, idx3))
+    solver.push();
+    solver.assert(thm.not());
+    try testing.expectEqual(.unsat, solver.check());
+    solver.pop(1);
 }
