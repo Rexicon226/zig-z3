@@ -164,6 +164,13 @@ pub const Bool = struct {
     ast: c.Z3_ast,
 
     const A = Ast(.bool);
+    pub const @"and" = A.@"and";
+    pub const @"or" = A.@"or";
+    pub const xor = A.xor;
+    pub const iff = A.iff;
+    pub const implies = A.implies;
+    pub const not = A.not;
+    pub const ite = A.ite;
 };
 pub const Int = struct {
     // storing ctx allows a builder pattern. i.e. `x.div(y)`
@@ -290,17 +297,33 @@ pub fn Ast(comptime ast_kind: AstKind) type {
             c.Z3_dec_ref(self.ctx.inner, self.ast);
         }
 
-        // *** Numeric ops ***
-        inline fn verifyNumeric() void {
-            comptime if (!ast_kind.isNumeric())
-                @compileError(std.fmt.comptimePrint("expected numeric ast kind.  found '{t}'", .{ast_kind}));
+        inline fn verify(comptime ok: bool, comptime message: []const u8) void {
+            comptime if (!ok)
+                @compileError(std.fmt.comptimePrint(message ++ ".  found '{t}'", .{ast_kind}));
         }
-
-        fn numericBinop(R: type, lhs: anytype, rhs: @TypeOf(lhs.*), func: @TypeOf(c.Z3_mk_div)) R {
-            verifyNumeric();
+        fn binop(R: type, lhs: anytype, rhs: @TypeOf(lhs.*), func: @TypeOf(c.Z3_mk_div)) R {
             const ast = func(lhs.ctx.inner, lhs.ast, rhs.ast);
             c.Z3_inc_ref(lhs.ctx.inner, ast);
             return .{ .ast = ast, .ctx = lhs.ctx };
+        }
+        fn varop(lhs: anytype, rhss: []const @TypeOf(lhs.*), comptime func: @TypeOf(c.Z3_mk_add)) @TypeOf(lhs.*) {
+            var buf: [16]c.Z3_ast = undefined;
+            if (buf.len < rhss.len + 1) @panic("varop only supports up to 15 rhs args.");
+            buf[0] = lhs.ast;
+            for (0..rhss.len) |i| buf[i + 1] = rhss[i].ast;
+            const ast = func(lhs.ctx.inner, @intCast(rhss.len + 1), &buf);
+            c.Z3_inc_ref(lhs.ctx.inner, ast);
+            return .{ .ast = ast, .ctx = lhs.ctx };
+        }
+
+        // *** Numeric ops ***
+        fn numericBinop(R: type, lhs: anytype, rhs: @TypeOf(lhs.*), func: @TypeOf(c.Z3_mk_div)) R {
+            verify(ast_kind.isNumeric(), "expected numeric ast kind");
+            return binop(R, lhs, rhs, func);
+        }
+        fn numericVarop(lhs: anytype, rhss: []const @TypeOf(lhs.*), comptime func: @TypeOf(c.Z3_mk_add)) @TypeOf(lhs.*) {
+            verify(ast_kind.isNumeric(), "expected numeric ast kind");
+            return varop(lhs, rhss, func);
         }
 
         pub fn div(lhs: anytype, rhs: @TypeOf(lhs.*)) @TypeOf(lhs.*) {
@@ -332,17 +355,6 @@ pub fn Ast(comptime ast_kind: AstKind) type {
             return numericBinop(Bool, lhs, rhs, c.Z3_mk_eq);
         }
 
-        fn numericVarop(lhs: anytype, rhss: []const @TypeOf(lhs.*), comptime func: @TypeOf(c.Z3_mk_add)) @TypeOf(lhs.*) {
-            verifyNumeric();
-            var buf: [16]c.Z3_ast = undefined;
-            if (buf.len < rhss.len + 1) @panic("numericVarop only supports up to 15 rhs args.");
-            buf[0] = lhs.ast;
-            for (0..rhss.len) |i| buf[i + 1] = rhss[i].ast;
-            const ast = func(lhs.ctx.inner, @intCast(rhss.len + 1), &buf);
-            c.Z3_inc_ref(lhs.ctx.inner, ast);
-            return .{ .ast = ast, .ctx = lhs.ctx };
-        }
-
         pub fn add(lhs: anytype, rhss: []const @TypeOf(lhs.*)) @TypeOf(lhs.*) {
             return numericVarop(lhs, rhss, c.Z3_mk_add);
         }
@@ -364,16 +376,10 @@ pub fn Ast(comptime ast_kind: AstKind) type {
         }
 
         // *** Bitvector ops ***
-        inline fn verifyBitvector() void {
-            comptime if (ast_kind != .bv)
-                @compileError(std.fmt.comptimePrint("expected bitvector (bv) ast kind.  found '{t}'", .{ast_kind}));
-        }
 
         fn bvBinop(R: type, lhs: Bitvector, rhs: Bitvector, func: @TypeOf(c.Z3_mk_bvadd)) R {
-            verifyBitvector();
-            const ast = func(lhs.ctx.inner, lhs.ast, rhs.ast);
-            c.Z3_inc_ref(lhs.ctx.inner, ast);
-            return .{ .ast = ast, .ctx = lhs.ctx };
+            verify(ast_kind == .bv, "expected bitvector (bv) ast kind");
+            return binop(R, lhs, rhs, func);
         }
 
         /// Addition
@@ -449,6 +455,40 @@ pub fn Ast(comptime ast_kind: AstKind) type {
                 .ast = c.Z3_mk_select(lhs.ctx.inner, lhs.ast, rhs.ast),
                 .ast_kind = .fromAst(lhs),
             };
+        }
+
+        // *** Bool ops ***
+        pub fn @"and"(lhs: Bool, rhss: []const Bool) Bool {
+            return varop(Bool, lhs, rhss, c.Z3_mk_and);
+        }
+        pub fn @"or"(lhs: Bool, rhss: []const Bool) Bool {
+            return varop(Bool, lhs, rhss, c.Z3_mk_or);
+        }
+
+        pub fn xor(lhs: Bool, rhs: Bool) Bool {
+            return binop(Bool, lhs, rhs, c.Z3_mk_xor);
+        }
+        pub fn iff(lhs: Bool, rhs: Bool) Bool {
+            return binop(Bool, lhs, rhs, c.Z3_mk_iff);
+        }
+        pub fn implies(lhs: Bool, rhs: Bool) Bool {
+            return binop(Bool, lhs, rhs, c.Z3_mk_implies);
+        }
+
+        pub fn not(m: *Model, op: Bool) Bool {
+            const ast = c.Z3_mk_not(m.ctx, op.ast);
+            c.Z3_inc_ref(op.ctx.inner, ast);
+            return .{ .ast = ast, .ctx = &m.ctx };
+        }
+
+        /// Create an AST node representing an if-then-else. If `predicate` is true,
+        /// the node results in `lhs`, otherwise it results in `rhs`.
+        ///
+        /// `rhs` and `lhs` must be the same sort, and the result type is that sort.
+        pub fn ite(m: *Model, predicate: Bool, lhs: anytype, rhs: @TypeOf(lhs.*)) @TypeOf(lhs.*) {
+            const ast = c.Z3_mk_ite(m.ctx.inner, predicate.ast, lhs.ast, rhs.ast);
+            c.Z3_inc_ref(m.ctx.inner, ast);
+            return .{ .ast = ast, .ctx = &m.ctx };
         }
     };
 }
@@ -539,6 +579,22 @@ pub const Model = struct {
         });
     }
 
+    pub fn minimize(m: *const Model, objective: anytype) void {
+        _ = switch (m.prover) {
+            .solver => @panic("cannot minimze 'solver' prover"),
+            .optimize => |o| c.Z3_optimize_minimize(m.ctx.inner, o, objective.ast),
+        };
+    }
+
+    /// The string is still owned by the model, it's stored in a temporary buffer inside and dies on `deinit()`.
+    pub fn toString(m: *const Model) []const u8 {
+        const str = switch (m.prover) {
+            .solver => |s| c.Z3_solver_to_string(m.ctx.inner, s),
+            .optimize => |o| c.Z3_optimize_to_string(m.ctx.inner, o),
+        };
+        return std.mem.sliceTo(str, 0);
+    }
+
     pub fn constant(m: *Model, comptime tag: AstKind, name: ?[:0]const u8, args: anytype) tag.Data() {
         const sort = m.ctx.getSort(tag, args);
         const sym = Symbol.asZ3(.{ .string = name }, &m.ctx);
@@ -547,9 +603,22 @@ pub const Model = struct {
         return .{ .ctx = &m.ctx, .ast = ast };
     }
 
-    pub fn fromInt64(m: *Model, i: i64) Int {
+    pub fn fromInt(m: *Model, value: i32) Int {
         const sort = m.ctx.getSort(.int, .{});
-        const ast = c.Z3_mk_int64(m.ctx.inner, i, sort.inner);
+        const ast = c.Z3_mk_int(m.ctx.inner, value, sort.inner);
+        c.Z3_inc_ref(m.ctx.inner, ast);
+        return .{ .ctx = &m.ctx, .ast = ast };
+    }
+
+    pub fn fromInt64(m: *Model, value: i64) Int {
+        const sort = m.ctx.getSort(.int, .{});
+        const ast = c.Z3_mk_int64(m.ctx.inner, value, sort.inner);
+        c.Z3_inc_ref(m.ctx.inner, ast);
+        return .{ .ctx = &m.ctx, .ast = ast };
+    }
+
+    pub fn @"true"(m: *Model) Bool {
+        const ast = c.Z3_mk_true(m.ctx.inner);
         c.Z3_inc_ref(m.ctx.inner, ast);
         return .{ .ctx = &m.ctx, .ast = ast };
     }
@@ -646,6 +715,11 @@ pub const PartialModel = struct {
         }
 
         return null;
+    }
+
+    pub fn toString(p: *const PartialModel) []const u8 {
+        const str = c.Z3_model_to_string(p.ctx.inner, p.inner);
+        return std.mem.sliceTo(str, 0);
     }
 };
 
