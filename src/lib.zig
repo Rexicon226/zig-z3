@@ -69,13 +69,13 @@ pub const Context = struct {
         c.Z3_del_context(ctx.inner);
     }
 
-    fn getSort(ctx: *Context, comptime tag: SortKind, args: anytype) Sort {
+    fn getSort(ctx: *Context, comptime tag: Ast.Tag, args: anytype) Sort {
         return ctx.getSortByName(tag, "Z3_mk_" ++ @tagName(tag) ++ "_sort", args);
     }
 
     fn getSortByName(
         ctx: *Context,
-        comptime tag: SortKind,
+        comptime tag: Ast.Tag,
         comptime mk_fn_name: []const u8,
         args: anytype,
     ) Sort {
@@ -92,50 +92,6 @@ pub const Context = struct {
         const sort = @call(.auto, @field(c, mk_fn_name), .{ctx.inner} ++ args);
         c.Z3_inc_ref(ctx.inner, c.Z3_sort_to_ast(ctx.inner, sort));
         return .{ .inner = sort, .ctx = ctx };
-    }
-};
-
-pub const SortKind = enum(c_uint) {
-    /// `Z3_UNINTERPRETED_SORT`
-    uninterpreted = c.Z3_UNINTERPRETED_SORT,
-    /// `Z3_BOOL_SORT`
-    bool = c.Z3_BOOL_SORT,
-    /// `Z3_INT_SORT`
-    int = c.Z3_INT_SORT,
-    /// `Z3_REAL_SORT`
-    real = c.Z3_REAL_SORT,
-    /// `Z3_BV_SORT`
-    bv = c.Z3_BV_SORT,
-    /// `Z3_ARRAY_SORT`
-    array = c.Z3_ARRAY_SORT,
-    /// `Z3_DATATYPE_SORT`
-    datatype = c.Z3_DATATYPE_SORT,
-    /// `Z3_RELATION_SORT`
-    relation = c.Z3_RELATION_SORT,
-    /// `Z3_FINITE_DOMAIN_SORT`
-    finite_domain = c.Z3_FINITE_DOMAIN_SORT,
-    /// `Z3_FLOATING_POINT_SORT`
-    floating_point = c.Z3_FLOATING_POINT_SORT,
-    /// `Z3_ROUNDING_MODE_SORT`
-    rounding_mode = c.Z3_ROUNDING_MODE_SORT,
-    /// `Z3_SEQ_SORT`
-    seq = c.Z3_SEQ_SORT,
-    /// `Z3_RE_SORT`
-    re = c.Z3_RE_SORT,
-    /// `Z3_UNKNOWN_SORT`
-    unknown = c.Z3_UNKNOWN_SORT,
-
-    inline fn Data(comptime tag: SortKind) type {
-        comptime return switch (tag) {
-            .bool => Bool,
-            .int => Int,
-            .real => Real,
-            .floating_point => Float,
-            .bv => Bitvector,
-            .array => Array,
-            .seq => Seq,
-            else => @compileError("TODO: Data() for " ++ @tagName(tag)),
-        };
     }
 };
 
@@ -211,6 +167,13 @@ pub const Real = struct {
     pub const eq = Ast.eq;
 };
 pub const Float = struct {
+    ctx: *Context,
+    ast: c.Z3_ast,
+
+    pub const toString = Ast.toString;
+    pub const eq = Ast.eq;
+};
+pub const String = struct {
     ctx: *Context,
     ast: c.Z3_ast,
 
@@ -327,7 +290,7 @@ pub const Dynamic = struct {
     pub const toString = Ast.toString;
     pub const eq = Ast.eq;
 
-    pub fn sortKind(self: Dynamic) SortKind {
+    pub fn sortKind(self: Dynamic) Sort.Tag {
         return @enumFromInt(c.Z3_get_sort_kind(
             self.ctx.inner,
             c.Z3_get_sort(self.ctx.inner, self.ast),
@@ -337,7 +300,7 @@ pub const Dynamic = struct {
     pub fn asSet(self: Dynamic) ?Set {
         switch (self.sortKind()) {
             .array => {
-                const sort_kind: SortKind = @enumFromInt(c.Z3_get_sort_kind(
+                const sort_kind: Sort.Tag = @enumFromInt(c.Z3_get_sort_kind(
                     self.ctx.inner,
                     c.Z3_get_array_sort_range(
                         self.ctx.inner,
@@ -356,6 +319,29 @@ pub const Dynamic = struct {
 
 /// common operations used by multiple Ast impls
 const Ast = struct {
+    pub const Tag = enum {
+        bool,
+        int,
+        real,
+        float32,
+        float64,
+        bv,
+        array,
+        seq,
+
+        inline fn Data(comptime tag: Tag) type {
+            comptime return switch (tag) {
+                .bool => Bool,
+                .int => Int,
+                .real => Real,
+                .float32 => Float,
+                .float64 => Float,
+                .bv => Bitvector,
+                .array => Array,
+                .seq => Seq,
+            };
+        }
+    };
     pub fn deinit(self: anytype) void {
         c.Z3_dec_ref(self.ctx.inner, self.ast);
     }
@@ -484,6 +470,37 @@ pub const Symbol = union(enum) {
 pub const Sort = struct {
     ctx: *Context,
     inner: c.Z3_sort,
+
+    pub const Tag = enum(c_uint) {
+        /// `Z3_UNINTERPRETED_SORT`
+        uninterpreted = c.Z3_UNINTERPRETED_SORT,
+        /// `Z3_BOOL_SORT`
+        bool = c.Z3_BOOL_SORT,
+        /// `Z3_INT_SORT`
+        int = c.Z3_INT_SORT,
+        /// `Z3_REAL_SORT`
+        real = c.Z3_REAL_SORT,
+        /// `Z3_BV_SORT`
+        bv = c.Z3_BV_SORT,
+        /// `Z3_ARRAY_SORT`
+        array = c.Z3_ARRAY_SORT,
+        /// `Z3_DATATYPE_SORT`
+        datatype = c.Z3_DATATYPE_SORT,
+        /// `Z3_RELATION_SORT`
+        relation = c.Z3_RELATION_SORT,
+        /// `Z3_FINITE_DOMAIN_SORT`
+        finite_domain = c.Z3_FINITE_DOMAIN_SORT,
+        /// `Z3_FLOATING_POINT_SORT`
+        floating_point = c.Z3_FLOATING_POINT_SORT,
+        /// `Z3_ROUNDING_MODE_SORT`
+        rounding_mode = c.Z3_ROUNDING_MODE_SORT,
+        /// `Z3_SEQ_SORT`
+        seq = c.Z3_SEQ_SORT,
+        /// `Z3_RE_SORT`
+        re = c.Z3_RE_SORT,
+        /// `Z3_UNKNOWN_SORT`
+        unknown = c.Z3_UNKNOWN_SORT,
+    };
 };
 
 const Prover = enum { solver, optimize };
@@ -569,7 +586,7 @@ pub const Model = struct {
         return std.mem.sliceTo(str, 0);
     }
 
-    pub fn constant(m: *Model, comptime tag: SortKind, name: ?[:0]const u8, args: anytype) tag.Data() {
+    pub fn constant(m: *Model, comptime tag: Ast.Tag, name: ?[:0]const u8, args: anytype) tag.Data() {
         const sort = m.ctx.getSort(tag, args);
         const sym = Symbol.asZ3(.{ .string = name }, &m.ctx);
         const ast = c.Z3_mk_const(m.ctx.inner, sym, sort.inner);
