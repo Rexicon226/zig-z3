@@ -139,118 +139,116 @@ pub const SortKind = enum(c_uint) {
     }
 };
 
-const A = Ast;
-
 pub const Bool = struct {
     ctx: *Context,
     ast: c.Z3_ast,
 
-    pub const toString = A.toString;
-    pub const eq = A.eq;
+    pub const toString = Ast.toString;
+    pub const eq = Ast.eq;
 
-    pub const @"and" = A.@"and";
-    pub const @"or" = A.@"or";
+    pub const @"and" = Ast.@"and";
+    pub const @"or" = Ast.@"or";
 
-    pub const xor = A.xor;
-    pub const iff = A.iff;
-    pub const implies = A.implies;
+    pub const xor = Ast.xor;
+    pub const iff = Ast.iff;
+    pub const implies = Ast.implies;
 
-    pub const not = A.not;
-    pub const ite = A.ite;
+    pub const not = Ast.not;
+    pub const ite = Ast.ite;
 };
 pub const Int = struct {
     // storing ctx allows a builder pattern. i.e. `x.div(y)`
     ctx: *Context,
     ast: c.Z3_ast,
 
-    pub const toString = A.toString;
-    pub const eq = A.eq;
+    pub const toString = Ast.toString;
+    pub const eq = Ast.eq;
 
-    pub const add = A.add;
-    pub const sub = A.sub;
-    pub const mul = A.mul;
+    pub const add = Ast.add;
+    pub const sub = Ast.sub;
+    pub const mul = Ast.mul;
 
-    pub const div = A.div;
-    pub const rem = A.rem;
-    pub const modulo = A.modulo;
-    pub const power = A.power;
-    pub const lt = A.lt;
-    pub const le = A.le;
-    pub const gt = A.gt;
-    pub const ge = A.ge;
+    pub const div = Ast.div;
+    pub const rem = Ast.rem;
+    pub const modulo = Ast.modulo;
+    pub const power = Ast.power;
+    pub const lt = Ast.lt;
+    pub const le = Ast.le;
+    pub const gt = Ast.gt;
+    pub const ge = Ast.ge;
 
-    pub const asInt64 = A.asInt64;
+    pub const asInt64 = Ast.asInt64;
 };
 pub const Real = struct {
     ctx: *Context,
     ast: c.Z3_ast,
 
-    pub const toString = A.toString;
-    pub const eq = A.eq;
+    pub const toString = Ast.toString;
+    pub const eq = Ast.eq;
 };
 pub const Float = struct {
     ctx: *Context,
     ast: c.Z3_ast,
 
-    pub const toString = A.toString;
-    pub const eq = A.eq;
+    pub const toString = Ast.toString;
+    pub const eq = Ast.eq;
 };
 pub const Bitvector = struct {
     ctx: *Context,
     ast: c.Z3_ast,
 
-    pub const toString = A.toString;
-    pub const eq = A.eq;
+    pub const toString = Ast.toString;
+    pub const eq = Ast.eq;
 
-    pub const bvadd = A.bvadd;
-    pub const bvsub = A.bvsub;
-    pub const bvmul = A.bvmul;
-    pub const bvudiv = A.bvudiv;
-    pub const bvsdiv = A.bvsdiv;
-    pub const bvurem = A.bvurem;
-    pub const bvsrem = A.bvsrem;
-    pub const bvsmod = A.bvsmod;
-    pub const bvult = A.bvult;
-    pub const bvslt = A.bvslt;
-    pub const bvule = A.bvule;
-    pub const bvsle = A.bvsle;
-    pub const bvuge = A.bvuge;
-    pub const bvsge = A.bvsge;
-    pub const bvugt = A.bvugt;
-    pub const bvsgt = A.bvsgt;
+    pub const bvadd = Ast.bvadd;
+    pub const bvsub = Ast.bvsub;
+    pub const bvmul = Ast.bvmul;
+    pub const bvudiv = Ast.bvudiv;
+    pub const bvsdiv = Ast.bvsdiv;
+    pub const bvurem = Ast.bvurem;
+    pub const bvsrem = Ast.bvsrem;
+    pub const bvsmod = Ast.bvsmod;
+    pub const bvult = Ast.bvult;
+    pub const bvslt = Ast.bvslt;
+    pub const bvule = Ast.bvule;
+    pub const bvsle = Ast.bvsle;
+    pub const bvuge = Ast.bvuge;
+    pub const bvsge = Ast.bvsge;
+    pub const bvugt = Ast.bvugt;
+    pub const bvsgt = Ast.bvsgt;
 
-    pub const asInt64 = A.asInt64;
+    pub const asInt64 = Ast.asInt64;
 };
 pub const Array = struct {
     ctx: *Context,
     ast: c.Z3_ast,
 
-    pub const toString = A.toString;
-    pub const eq = A.eq;
+    pub const toString = Ast.toString;
+    pub const eq = Ast.eq;
 
-    pub const select = A.select;
-    pub const store = A.store;
-    pub const asSet = A.asSet;
+    pub const select = Ast.select;
+    pub const store = Ast.store;
+    pub const asSet = Ast.asSet;
 };
 pub const Set = struct {
     ctx: *Context,
     ast: c.Z3_ast,
 
-    pub const toString = A.toString;
-    pub const eq = A.eq;
+    pub const toString = Ast.toString;
+    pub const eq = Ast.eq;
 };
 pub const Seq = struct {
     ctx: *Context,
     ast: c.Z3_ast,
 
-    pub const toString = A.toString;
+    pub const toString = Ast.toString;
 };
 pub const Dynamic = struct {
     ctx: *Context,
     ast: c.Z3_ast,
 
-    pub const toString = A.toString;
-    pub const eq = A.eq;
+    pub const toString = Ast.toString;
+    pub const eq = Ast.eq;
 
     pub fn sortKind(self: Dynamic) SortKind {
         return @enumFromInt(c.Z3_get_sort_kind(
@@ -279,226 +277,222 @@ pub const Dynamic = struct {
     }
 };
 
-// zig fmt: off
 const Ast = struct {
-        pub fn deinit(self: anytype) void {
-            c.Z3_dec_ref(self.ctx.inner, self.ast);
-        }
-        pub fn toString(self: anytype) ?[]const u8 {
-            return if (c.Z3_ast_to_string(self.ctx.inner, self.ast)) |s| std.mem.sliceTo(s, 0) else null;
-        }
+    pub fn deinit(self: anytype) void {
+        c.Z3_dec_ref(self.ctx.inner, self.ast);
+    }
+    pub fn toString(self: anytype) ?[]const u8 {
+        return if (c.Z3_ast_to_string(self.ctx.inner, self.ast)) |s| std.mem.sliceTo(s, 0) else null;
+    }
 
-        inline fn verify(comptime ok: bool, T: type, comptime message: []const u8) void {
-            comptime if (!ok)
-                @compileError(std.fmt.comptimePrint(message ++ ".  found '{s}'", .{@typeName(T)}));
-        }
-        inline fn Child(T: type) type {
-            return switch (@typeInfo(T)) {
-                .pointer => |p| p.child,
-                else => T,
-            };
-        }
-        fn binopAny(R: type, lhs: anytype, rhs: anytype, func: @TypeOf(c.Z3_mk_div)) R {
-            const ast = func(lhs.ctx.inner, lhs.ast, rhs.ast);
-            c.Z3_inc_ref(lhs.ctx.inner, ast);
-            return .{ .ast = ast, .ctx = lhs.ctx };
-        }
-        fn binop(R: type, lhs: anytype, rhs: Child(@TypeOf(lhs)), func: @TypeOf(c.Z3_mk_div)) R {
-            return binopAny(R, lhs, rhs, func);
-        }
-        fn varop(R: type, lhs: anytype, rhss: []const Child(@TypeOf(lhs)), comptime func: @TypeOf(c.Z3_mk_add)) R {
-            var buf: [16]c.Z3_ast = undefined;
-            if (buf.len < rhss.len + 1) @panic("varop only supports up to 15 rhs args.");
-            buf[0] = lhs.ast;
-            for (0..rhss.len) |i| buf[i + 1] = rhss[i].ast;
-            const ast = func(lhs.ctx.inner, @intCast(rhss.len + 1), &buf);
-            c.Z3_inc_ref(lhs.ctx.inner, ast);
-            return .{ .ast = ast, .ctx = lhs.ctx };
-        }
+    inline fn verify(comptime ok: bool, T: type, comptime message: []const u8) void {
+        comptime if (!ok)
+            @compileError(std.fmt.comptimePrint(message ++ ".  found '{s}'", .{@typeName(T)}));
+    }
+    inline fn Child(T: type) type {
+        return switch (@typeInfo(T)) {
+            .pointer => |p| p.child,
+            else => T,
+        };
+    }
+    fn binopAny(R: type, lhs: anytype, rhs: anytype, func: @TypeOf(c.Z3_mk_div)) R {
+        const ast = func(lhs.ctx.inner, lhs.ast, rhs.ast);
+        c.Z3_inc_ref(lhs.ctx.inner, ast);
+        return .{ .ast = ast, .ctx = lhs.ctx };
+    }
+    fn binop(R: type, lhs: anytype, rhs: Child(@TypeOf(lhs)), func: @TypeOf(c.Z3_mk_div)) R {
+        return binopAny(R, lhs, rhs, func);
+    }
+    fn varop(R: type, lhs: anytype, rhss: []const Child(@TypeOf(lhs)), comptime func: @TypeOf(c.Z3_mk_add)) R {
+        var buf: [16]c.Z3_ast = undefined;
+        if (buf.len < rhss.len + 1) @panic("varop only supports up to 15 rhs args.");
+        buf[0] = lhs.ast;
+        for (0..rhss.len) |i| buf[i + 1] = rhss[i].ast;
+        const ast = func(lhs.ctx.inner, @intCast(rhss.len + 1), &buf);
+        c.Z3_inc_ref(lhs.ctx.inner, ast);
+        return .{ .ast = ast, .ctx = lhs.ctx };
+    }
 
-        // *** Numeric ops ***
-        inline fn verifyNumeric(T: type) void {
-            verify(T == Int or T == Float or T == Real, T, "expected numeric type");
-        }
-        fn numericBinop(R: type, lhs: anytype, rhs: Child(@TypeOf(lhs)), func: @TypeOf(c.Z3_mk_div)) R {
-            verifyNumeric(Child(@TypeOf(lhs)));
-            return binop(R, lhs, rhs, func);
-        }
-        fn numericVarop(lhs: anytype, rhss: []const Child(@TypeOf(lhs)), comptime func: @TypeOf(c.Z3_mk_add)) Child(@TypeOf(lhs)) {
-            verifyNumeric(Child(@TypeOf(lhs)));
-            return varop(Child(@TypeOf(lhs)), lhs, rhss, func);
-        }
+    // *** Numeric ops ***
+    inline fn verifyNumeric(T: type) void {
+        verify(T == Int or T == Float or T == Real, T, "expected numeric type");
+    }
+    fn numericBinop(R: type, lhs: anytype, rhs: Child(@TypeOf(lhs)), func: @TypeOf(c.Z3_mk_div)) R {
+        verifyNumeric(Child(@TypeOf(lhs)));
+        return binop(R, lhs, rhs, func);
+    }
+    fn numericVarop(lhs: anytype, rhss: []const Child(@TypeOf(lhs)), comptime func: @TypeOf(c.Z3_mk_add)) Child(@TypeOf(lhs)) {
+        verifyNumeric(Child(@TypeOf(lhs)));
+        return varop(Child(@TypeOf(lhs)), lhs, rhss, func);
+    }
 
-        pub fn div(lhs: anytype, rhs: Child(@TypeOf(lhs))) Child(@TypeOf(lhs)) {
-            return numericBinop(Child(@TypeOf(lhs)), lhs, rhs, c.Z3_mk_div);
-        }
-        pub fn rem(lhs: anytype, rhs: Child(@TypeOf(lhs))) Child(@TypeOf(lhs)) {
-            return numericBinop(Child(@TypeOf(lhs)), lhs, rhs, c.Z3_mk_rem);
-        }
-        pub fn mod(lhs: anytype, rhs: Child(@TypeOf(lhs))) Child(@TypeOf(lhs)) {
-            return numericBinop(Child(@TypeOf(lhs)), lhs, rhs, c.Z3_mk_mod);
-        }
-        pub fn power(lhs: anytype, rhs: Child(@TypeOf(lhs))) Real {
-            return numericBinop(Child(@TypeOf(lhs)), lhs, rhs, c.Z3_mk_power);
-        }
+    pub fn div(lhs: anytype, rhs: Child(@TypeOf(lhs))) Child(@TypeOf(lhs)) {
+        return numericBinop(Child(@TypeOf(lhs)), lhs, rhs, c.Z3_mk_div);
+    }
+    pub fn rem(lhs: anytype, rhs: Child(@TypeOf(lhs))) Child(@TypeOf(lhs)) {
+        return numericBinop(Child(@TypeOf(lhs)), lhs, rhs, c.Z3_mk_rem);
+    }
+    pub fn mod(lhs: anytype, rhs: Child(@TypeOf(lhs))) Child(@TypeOf(lhs)) {
+        return numericBinop(Child(@TypeOf(lhs)), lhs, rhs, c.Z3_mk_mod);
+    }
+    pub fn power(lhs: anytype, rhs: Child(@TypeOf(lhs))) Real {
+        return numericBinop(Child(@TypeOf(lhs)), lhs, rhs, c.Z3_mk_power);
+    }
 
-        pub fn lt(lhs: anytype, rhs: Child(@TypeOf(lhs))) Bool {
-            return numericBinop(Bool, lhs, rhs, c.Z3_mk_lt);
-        }
-        pub fn le(lhs: anytype, rhs: Child(@TypeOf(lhs))) Bool {
-            return numericBinop(Bool, lhs, rhs, c.Z3_mk_le);
-        }
-        pub fn gt(lhs: anytype, rhs: Child(@TypeOf(lhs))) Bool {
-            return numericBinop(Bool, lhs, rhs, c.Z3_mk_gt);
-        }
-        pub fn ge(lhs: anytype, rhs: Child(@TypeOf(lhs))) Bool {
-            return numericBinop(Bool, lhs, rhs, c.Z3_mk_ge);
-        }
-        pub fn eq(lhs: anytype, rhs: Child(@TypeOf(lhs))) Bool {
-            return binop(Bool, lhs, rhs, c.Z3_mk_eq);
-        }
+    pub fn lt(lhs: anytype, rhs: Child(@TypeOf(lhs))) Bool {
+        return numericBinop(Bool, lhs, rhs, c.Z3_mk_lt);
+    }
+    pub fn le(lhs: anytype, rhs: Child(@TypeOf(lhs))) Bool {
+        return numericBinop(Bool, lhs, rhs, c.Z3_mk_le);
+    }
+    pub fn gt(lhs: anytype, rhs: Child(@TypeOf(lhs))) Bool {
+        return numericBinop(Bool, lhs, rhs, c.Z3_mk_gt);
+    }
+    pub fn ge(lhs: anytype, rhs: Child(@TypeOf(lhs))) Bool {
+        return numericBinop(Bool, lhs, rhs, c.Z3_mk_ge);
+    }
+    pub fn eq(lhs: anytype, rhs: Child(@TypeOf(lhs))) Bool {
+        return binop(Bool, lhs, rhs, c.Z3_mk_eq);
+    }
 
-        pub fn add(lhs: anytype, rhss: []const Child(@TypeOf(lhs))) Child(@TypeOf(lhs)) {
-            return numericVarop(lhs, rhss, c.Z3_mk_add);
-        }
+    pub fn add(lhs: anytype, rhss: []const Child(@TypeOf(lhs))) Child(@TypeOf(lhs)) {
+        return numericVarop(lhs, rhss, c.Z3_mk_add);
+    }
+    pub fn sub(lhs: anytype, rhss: []const Child(@TypeOf(lhs))) Child(@TypeOf(lhs)) {
+        return numericVarop(lhs, rhss, c.Z3_mk_sub);
+    }
+    pub fn mul(lhs: anytype, rhss: []const Child(@TypeOf(lhs))) Child(@TypeOf(lhs)) {
+        return numericVarop(lhs, rhss, c.Z3_mk_mul);
+    }
 
-        pub fn sub(lhs: anytype, rhss: []const Child(@TypeOf(lhs))) Child(@TypeOf(lhs)) {
-            return numericVarop(lhs, rhss, c.Z3_mk_sub);
-        }
+    pub fn asInt64(lhs: anytype) ?i64 {
+        var ret: i64 = undefined;
+        return if (c.Z3_get_numeral_int64(lhs.ctx.inner, lhs.ast, &ret))
+            ret
+        else
+            null;
+    }
 
-        pub fn mul(lhs: anytype, rhss: []const Child(@TypeOf(lhs))) Child(@TypeOf(lhs)) {
-            return numericVarop(lhs, rhss, c.Z3_mk_mul);
-        }
+    // *** Bitvector ops ***
+    fn bvBinop(R: type, lhs: Bitvector, rhs: Bitvector, func: @TypeOf(c.Z3_mk_bvadd)) R {
+        return binop(R, lhs, rhs, func);
+    }
 
-        pub fn asInt64(lhs: anytype) ?i64 {
-            var ret: i64 = undefined;
-            return if (c.Z3_get_numeral_int64(lhs.ctx.inner, lhs.ast, &ret))
-                ret
-            else
-                null;
-        }
+    /// Addition
+    pub fn bvadd(lhs: Bitvector, rhs: Bitvector) Bitvector {
+        return bvBinop(Bitvector, lhs, rhs, c.Z3_mk_bvadd);
+    }
+    /// Subtraction
+    pub fn bvsub(lhs: Bitvector, rhs: Bitvector) Bitvector {
+        return bvBinop(Bitvector, lhs, rhs, c.Z3_mk_bvsub);
+    }
+    /// Multiplication
+    pub fn bvmul(lhs: Bitvector, rhs: Bitvector) Bitvector {
+        return bvBinop(Bitvector, lhs, rhs, c.Z3_mk_bvmul);
+    }
+    /// Unsigned division
+    pub fn bvudiv(lhs: Bitvector, rhs: Bitvector) Bitvector {
+        return bvBinop(Bitvector, lhs, rhs, c.Z3_mk_bvudiv);
+    }
+    /// Signed division
+    pub fn bvsdiv(lhs: Bitvector, rhs: Bitvector) Bitvector {
+        return bvBinop(Bitvector, lhs, rhs, c.Z3_mk_bvsdiv);
+    }
+    /// Unsigned remainder
+    pub fn bvurem(lhs: Bitvector, rhs: Bitvector) Bitvector {
+        return bvBinop(Bitvector, lhs, rhs, c.Z3_mk_bvurem);
+    }
+    /// Signed remainder (sign follows dividend)
+    pub fn bvsrem(lhs: Bitvector, rhs: Bitvector) Bitvector {
+        return bvBinop(Bitvector, lhs, rhs, c.Z3_mk_bvsrem);
+    }
+    /// Signed remainder (sign follows divisor)
+    pub fn bvsmod(lhs: Bitvector, rhs: Bitvector) Bitvector {
+        return bvBinop(Bitvector, lhs, rhs, c.Z3_mk_bvsmod);
+    }
 
-        // *** Bitvector ops ***
-        fn bvBinop(R: type, lhs: Bitvector, rhs: Bitvector, func: @TypeOf(c.Z3_mk_bvadd)) R {
-            return binop(R, lhs, rhs, func);
-        }
+    /// Unsigned less than
+    pub fn bvult(lhs: Bitvector, rhs: Bitvector) Bool {
+        return bvBinop(Bool, lhs, rhs, c.Z3_mk_bvult);
+    }
+    /// Signed less than
+    pub fn bvslt(lhs: Bitvector, rhs: Bitvector) Bool {
+        return bvBinop(Bool, lhs, rhs, c.Z3_mk_bvslt);
+    }
+    /// Unsigned less than or equal
+    pub fn bvule(lhs: Bitvector, rhs: Bitvector) Bool {
+        return bvBinop(Bool, lhs, rhs, c.Z3_mk_bvule);
+    }
+    /// Signed less than or equal
+    pub fn bvsle(lhs: Bitvector, rhs: Bitvector) Bool {
+        return bvBinop(Bool, lhs, rhs, c.Z3_mk_bvsle);
+    }
+    /// Unsigned greater or equal
+    pub fn bvuge(lhs: Bitvector, rhs: Bitvector) Bool {
+        return bvBinop(Bool, lhs, rhs, c.Z3_mk_bvuge);
+    }
+    /// Signed greater or equal
+    pub fn bvsge(lhs: Bitvector, rhs: Bitvector) Bool {
+        return bvBinop(Bool, lhs, rhs, c.Z3_mk_bvsge);
+    }
+    /// Unsigned greater than
+    pub fn bvugt(lhs: Bitvector, rhs: Bitvector) Bool {
+        return bvBinop(Bool, lhs, rhs, c.Z3_mk_bvugt);
+    }
+    /// Signed greater than
+    pub fn bvsgt(lhs: Bitvector, rhs: Bitvector) Bool {
+        return bvBinop(Bool, lhs, rhs, c.Z3_mk_bvsgt);
+    }
 
-        /// Addition
-        pub fn bvadd(lhs: Bitvector, rhs: Bitvector) Bitvector {
-            return bvBinop(Bitvector, lhs, rhs, c.Z3_mk_bvadd);
-        }
-        /// Subtraction
-        pub fn bvsub(lhs: Bitvector, rhs: Bitvector) Bitvector {
-            return bvBinop(Bitvector, lhs, rhs, c.Z3_mk_bvsub);
-        }
-        /// Multiplication
-        pub fn bvmul(lhs: Bitvector, rhs: Bitvector) Bitvector {
-            return bvBinop(Bitvector, lhs, rhs, c.Z3_mk_bvmul);
-        }
-        /// Unsigned division
-        pub fn bvudiv(lhs: Bitvector, rhs: Bitvector) Bitvector {
-            return bvBinop(Bitvector, lhs, rhs, c.Z3_mk_bvudiv);
-        }
-        /// Signed division
-        pub fn bvsdiv(lhs: Bitvector, rhs: Bitvector) Bitvector {
-            return bvBinop(Bitvector, lhs, rhs, c.Z3_mk_bvsdiv);
-        }
-        /// Unsigned remainder
-        pub fn bvurem(lhs: Bitvector, rhs: Bitvector) Bitvector {
-            return bvBinop(Bitvector, lhs, rhs, c.Z3_mk_bvurem);
-        }
-        /// Signed remainder (sign follows dividend)
-        pub fn bvsrem(lhs: Bitvector, rhs: Bitvector) Bitvector {
-            return bvBinop(Bitvector, lhs, rhs, c.Z3_mk_bvsrem);
-        }
-        /// Signed remainder (sign follows divisor)
-        pub fn bvsmod(lhs: Bitvector, rhs: Bitvector) Bitvector {
-            return bvBinop(Bitvector, lhs, rhs, c.Z3_mk_bvsmod);
-        }
+    // *** Array ops ***
+    pub fn select(lhs: anytype, rhs: anytype) Dynamic {
+        return binopAny(Dynamic, lhs, rhs, c.Z3_mk_select);
+    }
+    pub fn store(lhs: anytype, index: Int, value: anytype) Child(@TypeOf(lhs)) {
+        const ast = c.Z3_mk_store(
+            lhs.ctx.inner,
+            lhs.ast,
+            index.ast,
+            value.ast,
+        );
+        c.Z3_inc_ref(lhs.ctx.inner, ast);
+        return .{ .ast = ast, .ctx = lhs.ctx };
+    }
 
-        /// Unsigned less than
-        pub fn bvult(lhs: Bitvector, rhs: Bitvector) Bool {
-            return bvBinop(Bool, lhs, rhs, c.Z3_mk_bvult);
-        }
-        /// Signed less than
-        pub fn bvslt(lhs: Bitvector, rhs: Bitvector) Bool {
-            return bvBinop(Bool, lhs, rhs, c.Z3_mk_bvslt);
-        }
-        /// Unsigned less than or equal
-        pub fn bvule(lhs: Bitvector, rhs: Bitvector) Bool {
-            return bvBinop(Bool, lhs, rhs, c.Z3_mk_bvule);
-        }
-        /// Signed less than or equal
-        pub fn bvsle(lhs: Bitvector, rhs: Bitvector) Bool {
-            return bvBinop(Bool, lhs, rhs, c.Z3_mk_bvsle);
-        }
-        /// Unsigned greater or equal
-        pub fn bvuge(lhs: Bitvector, rhs: Bitvector) Bool {
-            return bvBinop(Bool, lhs, rhs, c.Z3_mk_bvuge);
-        }
-        /// Signed greater or equal
-        pub fn bvsge(lhs: Bitvector, rhs: Bitvector) Bool {
-            return bvBinop(Bool, lhs, rhs, c.Z3_mk_bvsge);
-        }
-        /// Unsigned greater than
-        pub fn bvugt(lhs: Bitvector, rhs: Bitvector) Bool {
-            return bvBinop(Bool, lhs, rhs, c.Z3_mk_bvugt);
-        }
-        /// Signed greater than
-        pub fn bvsgt(lhs: Bitvector, rhs: Bitvector) Bool {
-            return bvBinop(Bool, lhs, rhs, c.Z3_mk_bvsgt);
-        }
+    // *** Bool ops ***
+    pub fn @"and"(lhs: Bool, rhss: []const Bool) Bool {
+        return varop(Bool, lhs, rhss, c.Z3_mk_and);
+    }
+    pub fn @"or"(lhs: Bool, rhss: []const Bool) Bool {
+        return varop(Bool, lhs, rhss, c.Z3_mk_or);
+    }
 
-        // *** Array ops ***
-        pub fn select(lhs: anytype, rhs: anytype) Dynamic {
-            return binopAny(Dynamic, lhs, rhs, c.Z3_mk_select);
-        }
-        pub fn store(lhs: anytype, index: Int, value: anytype) Child(@TypeOf(lhs)) {
-            const ast = c.Z3_mk_store(
-                lhs.ctx.inner,
-                lhs.ast,
-                index.ast,
-                value.ast,
-            );
-            c.Z3_inc_ref(lhs.ctx.inner, ast);
-            return .{ .ast = ast, .ctx = lhs.ctx };
-        }
+    pub fn xor(lhs: Bool, rhs: Bool) Bool {
+        return binop(Bool, lhs, rhs, c.Z3_mk_xor);
+    }
+    pub fn iff(lhs: Bool, rhs: Bool) Bool {
+        return binop(Bool, lhs, rhs, c.Z3_mk_iff);
+    }
+    pub fn implies(lhs: Bool, rhs: Bool) Bool {
+        return binop(Bool, lhs, rhs, c.Z3_mk_implies);
+    }
 
-        // *** Bool ops ***
-        pub fn @"and"(lhs: Bool, rhss: []const Bool) Bool {
-            return varop(Bool, lhs, rhss, c.Z3_mk_and);
-        }
-        pub fn @"or"(lhs: Bool, rhss: []const Bool) Bool {
-            return varop(Bool, lhs, rhss, c.Z3_mk_or);
-        }
+    pub fn not(op: Bool) Bool {
+        const ast = c.Z3_mk_not(op.ctx.inner, op.ast);
+        c.Z3_inc_ref(op.ctx.inner, ast);
+        return .{ .ast = ast, .ctx = op.ctx };
+    }
 
-        pub fn xor(lhs: Bool, rhs: Bool) Bool {
-            return binop(Bool, lhs, rhs, c.Z3_mk_xor);
-        }
-        pub fn iff(lhs: Bool, rhs: Bool) Bool {
-            return binop(Bool, lhs, rhs, c.Z3_mk_iff);
-        }
-        pub fn implies(lhs: Bool, rhs: Bool) Bool {
-            return binop(Bool, lhs, rhs, c.Z3_mk_implies);
-        }
-
-        pub fn not(op: Bool) Bool {
-            const ast = c.Z3_mk_not(op.ctx.inner, op.ast);
-            c.Z3_inc_ref(op.ctx.inner, ast);
-            return .{ .ast = ast, .ctx = op.ctx };
-        }
-
-        /// Create an AST node representing an if-then-else. If `predicate` is true,
-        /// the node results in `lhs`, otherwise it results in `rhs`.
-        ///
-        /// `rhs` and `lhs` must be the same sort, and the result type is that sort.
-        pub fn ite(predicate: Bool, lhs: anytype, rhs: Child(@TypeOf(lhs))) Child(@TypeOf(lhs)) {
-            const ast = c.Z3_mk_ite(predicate.ctx.inner, predicate.ast, lhs.ast, rhs.ast);
-            c.Z3_inc_ref(predicate.ctx.inner, ast);
-            return .{ .ast = ast, .ctx = predicate.ctx };
-        }
+    /// Create an AST node representing an if-then-else. If `predicate` is true,
+    /// the node results in `lhs`, otherwise it results in `rhs`.
+    ///
+    /// `rhs` and `lhs` must be the same sort, and the result type is that sort.
+    pub fn ite(predicate: Bool, lhs: anytype, rhs: Child(@TypeOf(lhs))) Child(@TypeOf(lhs)) {
+        const ast = c.Z3_mk_ite(predicate.ctx.inner, predicate.ast, lhs.ast, rhs.ast);
+        c.Z3_inc_ref(predicate.ctx.inner, ast);
+        return .{ .ast = ast, .ctx = predicate.ctx };
+    }
 };
-// zig fmt: on
 
 pub const Symbol = union(enum) {
     int: i32,
