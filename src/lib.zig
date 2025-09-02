@@ -139,6 +139,7 @@ pub const SortKind = enum(c_uint) {
     }
 };
 
+// *** Ast implementations ***
 pub const Bool = struct {
     ctx: *Context,
     ast: c.Z3_ast,
@@ -146,15 +147,38 @@ pub const Bool = struct {
     pub const toString = Ast.toString;
     pub const eq = Ast.eq;
 
-    pub const @"and" = Ast.@"and";
-    pub const @"or" = Ast.@"or";
+    pub fn @"and"(lhs: Bool, rhss: []const Bool) Bool {
+        return Ast.varop(Bool, lhs, rhss, c.Z3_mk_and);
+    }
+    pub fn @"or"(lhs: Bool, rhss: []const Bool) Bool {
+        return Ast.varop(Bool, lhs, rhss, c.Z3_mk_or);
+    }
 
-    pub const xor = Ast.xor;
-    pub const iff = Ast.iff;
-    pub const implies = Ast.implies;
+    pub fn xor(lhs: Bool, rhs: Bool) Bool {
+        return Ast.binop(Bool, lhs, rhs, c.Z3_mk_xor);
+    }
+    pub fn iff(lhs: Bool, rhs: Bool) Bool {
+        return Ast.binop(Bool, lhs, rhs, c.Z3_mk_iff);
+    }
+    pub fn implies(lhs: Bool, rhs: Bool) Bool {
+        return Ast.binop(Bool, lhs, rhs, c.Z3_mk_implies);
+    }
 
-    pub const not = Ast.not;
-    pub const ite = Ast.ite;
+    pub fn not(op: Bool) Bool {
+        const ast = c.Z3_mk_not(op.ctx.inner, op.ast);
+        c.Z3_inc_ref(op.ctx.inner, ast);
+        return .{ .ast = ast, .ctx = op.ctx };
+    }
+
+    /// Create an AST node representing an if-then-else. If `predicate` is true,
+    /// the node results in `lhs`, otherwise it results in `rhs`.
+    ///
+    /// `rhs` and `lhs` must be the same sort, and the result type is that sort.
+    pub fn ite(predicate: Bool, lhs: anytype, rhs: Ast.Child(@TypeOf(lhs))) Ast.Child(@TypeOf(lhs)) {
+        const ast = c.Z3_mk_ite(predicate.ctx.inner, predicate.ast, lhs.ast, rhs.ast);
+        c.Z3_inc_ref(predicate.ctx.inner, ast);
+        return .{ .ast = ast, .ctx = predicate.ctx };
+    }
 };
 pub const Int = struct {
     // storing ctx allows a builder pattern. i.e. `x.div(y)`
@@ -200,24 +224,77 @@ pub const Bitvector = struct {
     pub const toString = Ast.toString;
     pub const eq = Ast.eq;
 
-    pub const bvadd = Ast.bvadd;
-    pub const bvsub = Ast.bvsub;
-    pub const bvmul = Ast.bvmul;
-    pub const bvudiv = Ast.bvudiv;
-    pub const bvsdiv = Ast.bvsdiv;
-    pub const bvurem = Ast.bvurem;
-    pub const bvsrem = Ast.bvsrem;
-    pub const bvsmod = Ast.bvsmod;
-    pub const bvult = Ast.bvult;
-    pub const bvslt = Ast.bvslt;
-    pub const bvule = Ast.bvule;
-    pub const bvsle = Ast.bvsle;
-    pub const bvuge = Ast.bvuge;
-    pub const bvsge = Ast.bvsge;
-    pub const bvugt = Ast.bvugt;
-    pub const bvsgt = Ast.bvsgt;
-
     pub const asInt64 = Ast.asInt64;
+
+    fn bvBinop(R: type, lhs: Bitvector, rhs: Bitvector, func: @TypeOf(c.Z3_mk_bvadd)) R {
+        return Ast.binop(R, lhs, rhs, func);
+    }
+
+    /// Addition
+    pub fn bvadd(lhs: Bitvector, rhs: Bitvector) Bitvector {
+        return bvBinop(Bitvector, lhs, rhs, c.Z3_mk_bvadd);
+    }
+    /// Subtraction
+    pub fn bvsub(lhs: Bitvector, rhs: Bitvector) Bitvector {
+        return bvBinop(Bitvector, lhs, rhs, c.Z3_mk_bvsub);
+    }
+    /// Multiplication
+    pub fn bvmul(lhs: Bitvector, rhs: Bitvector) Bitvector {
+        return bvBinop(Bitvector, lhs, rhs, c.Z3_mk_bvmul);
+    }
+    /// Unsigned division
+    pub fn bvudiv(lhs: Bitvector, rhs: Bitvector) Bitvector {
+        return bvBinop(Bitvector, lhs, rhs, c.Z3_mk_bvudiv);
+    }
+    /// Signed division
+    pub fn bvsdiv(lhs: Bitvector, rhs: Bitvector) Bitvector {
+        return bvBinop(Bitvector, lhs, rhs, c.Z3_mk_bvsdiv);
+    }
+    /// Unsigned remainder
+    pub fn bvurem(lhs: Bitvector, rhs: Bitvector) Bitvector {
+        return bvBinop(Bitvector, lhs, rhs, c.Z3_mk_bvurem);
+    }
+    /// Signed remainder (sign follows dividend)
+    pub fn bvsrem(lhs: Bitvector, rhs: Bitvector) Bitvector {
+        return bvBinop(Bitvector, lhs, rhs, c.Z3_mk_bvsrem);
+    }
+    /// Signed remainder (sign follows divisor)
+    pub fn bvsmod(lhs: Bitvector, rhs: Bitvector) Bitvector {
+        return bvBinop(Bitvector, lhs, rhs, c.Z3_mk_bvsmod);
+    }
+
+    /// Unsigned less than
+    pub fn bvult(lhs: Bitvector, rhs: Bitvector) Bool {
+        return bvBinop(Bool, lhs, rhs, c.Z3_mk_bvult);
+    }
+    /// Signed less than
+    pub fn bvslt(lhs: Bitvector, rhs: Bitvector) Bool {
+        return bvBinop(Bool, lhs, rhs, c.Z3_mk_bvslt);
+    }
+    /// Unsigned less than or equal
+    pub fn bvule(lhs: Bitvector, rhs: Bitvector) Bool {
+        return bvBinop(Bool, lhs, rhs, c.Z3_mk_bvule);
+    }
+    /// Signed less than or equal
+    pub fn bvsle(lhs: Bitvector, rhs: Bitvector) Bool {
+        return bvBinop(Bool, lhs, rhs, c.Z3_mk_bvsle);
+    }
+    /// Unsigned greater or equal
+    pub fn bvuge(lhs: Bitvector, rhs: Bitvector) Bool {
+        return bvBinop(Bool, lhs, rhs, c.Z3_mk_bvuge);
+    }
+    /// Signed greater or equal
+    pub fn bvsge(lhs: Bitvector, rhs: Bitvector) Bool {
+        return bvBinop(Bool, lhs, rhs, c.Z3_mk_bvsge);
+    }
+    /// Unsigned greater than
+    pub fn bvugt(lhs: Bitvector, rhs: Bitvector) Bool {
+        return bvBinop(Bool, lhs, rhs, c.Z3_mk_bvugt);
+    }
+    /// Signed greater than
+    pub fn bvsgt(lhs: Bitvector, rhs: Bitvector) Bool {
+        return bvBinop(Bool, lhs, rhs, c.Z3_mk_bvsgt);
+    }
 };
 pub const Array = struct {
     ctx: *Context,
@@ -277,6 +354,7 @@ pub const Dynamic = struct {
     }
 };
 
+/// common operations used by multiple Ast impls
 const Ast = struct {
     pub fn deinit(self: anytype) void {
         c.Z3_dec_ref(self.ctx.inner, self.ast);
@@ -373,77 +451,6 @@ const Ast = struct {
             null;
     }
 
-    // *** Bitvector ops ***
-    fn bvBinop(R: type, lhs: Bitvector, rhs: Bitvector, func: @TypeOf(c.Z3_mk_bvadd)) R {
-        return binop(R, lhs, rhs, func);
-    }
-
-    /// Addition
-    pub fn bvadd(lhs: Bitvector, rhs: Bitvector) Bitvector {
-        return bvBinop(Bitvector, lhs, rhs, c.Z3_mk_bvadd);
-    }
-    /// Subtraction
-    pub fn bvsub(lhs: Bitvector, rhs: Bitvector) Bitvector {
-        return bvBinop(Bitvector, lhs, rhs, c.Z3_mk_bvsub);
-    }
-    /// Multiplication
-    pub fn bvmul(lhs: Bitvector, rhs: Bitvector) Bitvector {
-        return bvBinop(Bitvector, lhs, rhs, c.Z3_mk_bvmul);
-    }
-    /// Unsigned division
-    pub fn bvudiv(lhs: Bitvector, rhs: Bitvector) Bitvector {
-        return bvBinop(Bitvector, lhs, rhs, c.Z3_mk_bvudiv);
-    }
-    /// Signed division
-    pub fn bvsdiv(lhs: Bitvector, rhs: Bitvector) Bitvector {
-        return bvBinop(Bitvector, lhs, rhs, c.Z3_mk_bvsdiv);
-    }
-    /// Unsigned remainder
-    pub fn bvurem(lhs: Bitvector, rhs: Bitvector) Bitvector {
-        return bvBinop(Bitvector, lhs, rhs, c.Z3_mk_bvurem);
-    }
-    /// Signed remainder (sign follows dividend)
-    pub fn bvsrem(lhs: Bitvector, rhs: Bitvector) Bitvector {
-        return bvBinop(Bitvector, lhs, rhs, c.Z3_mk_bvsrem);
-    }
-    /// Signed remainder (sign follows divisor)
-    pub fn bvsmod(lhs: Bitvector, rhs: Bitvector) Bitvector {
-        return bvBinop(Bitvector, lhs, rhs, c.Z3_mk_bvsmod);
-    }
-
-    /// Unsigned less than
-    pub fn bvult(lhs: Bitvector, rhs: Bitvector) Bool {
-        return bvBinop(Bool, lhs, rhs, c.Z3_mk_bvult);
-    }
-    /// Signed less than
-    pub fn bvslt(lhs: Bitvector, rhs: Bitvector) Bool {
-        return bvBinop(Bool, lhs, rhs, c.Z3_mk_bvslt);
-    }
-    /// Unsigned less than or equal
-    pub fn bvule(lhs: Bitvector, rhs: Bitvector) Bool {
-        return bvBinop(Bool, lhs, rhs, c.Z3_mk_bvule);
-    }
-    /// Signed less than or equal
-    pub fn bvsle(lhs: Bitvector, rhs: Bitvector) Bool {
-        return bvBinop(Bool, lhs, rhs, c.Z3_mk_bvsle);
-    }
-    /// Unsigned greater or equal
-    pub fn bvuge(lhs: Bitvector, rhs: Bitvector) Bool {
-        return bvBinop(Bool, lhs, rhs, c.Z3_mk_bvuge);
-    }
-    /// Signed greater or equal
-    pub fn bvsge(lhs: Bitvector, rhs: Bitvector) Bool {
-        return bvBinop(Bool, lhs, rhs, c.Z3_mk_bvsge);
-    }
-    /// Unsigned greater than
-    pub fn bvugt(lhs: Bitvector, rhs: Bitvector) Bool {
-        return bvBinop(Bool, lhs, rhs, c.Z3_mk_bvugt);
-    }
-    /// Signed greater than
-    pub fn bvsgt(lhs: Bitvector, rhs: Bitvector) Bool {
-        return bvBinop(Bool, lhs, rhs, c.Z3_mk_bvsgt);
-    }
-
     // *** Array ops ***
     pub fn select(lhs: anytype, rhs: anytype) Dynamic {
         return binopAny(Dynamic, lhs, rhs, c.Z3_mk_select);
@@ -457,40 +464,6 @@ const Ast = struct {
         );
         c.Z3_inc_ref(lhs.ctx.inner, ast);
         return .{ .ast = ast, .ctx = lhs.ctx };
-    }
-
-    // *** Bool ops ***
-    pub fn @"and"(lhs: Bool, rhss: []const Bool) Bool {
-        return varop(Bool, lhs, rhss, c.Z3_mk_and);
-    }
-    pub fn @"or"(lhs: Bool, rhss: []const Bool) Bool {
-        return varop(Bool, lhs, rhss, c.Z3_mk_or);
-    }
-
-    pub fn xor(lhs: Bool, rhs: Bool) Bool {
-        return binop(Bool, lhs, rhs, c.Z3_mk_xor);
-    }
-    pub fn iff(lhs: Bool, rhs: Bool) Bool {
-        return binop(Bool, lhs, rhs, c.Z3_mk_iff);
-    }
-    pub fn implies(lhs: Bool, rhs: Bool) Bool {
-        return binop(Bool, lhs, rhs, c.Z3_mk_implies);
-    }
-
-    pub fn not(op: Bool) Bool {
-        const ast = c.Z3_mk_not(op.ctx.inner, op.ast);
-        c.Z3_inc_ref(op.ctx.inner, ast);
-        return .{ .ast = ast, .ctx = op.ctx };
-    }
-
-    /// Create an AST node representing an if-then-else. If `predicate` is true,
-    /// the node results in `lhs`, otherwise it results in `rhs`.
-    ///
-    /// `rhs` and `lhs` must be the same sort, and the result type is that sort.
-    pub fn ite(predicate: Bool, lhs: anytype, rhs: Child(@TypeOf(lhs))) Child(@TypeOf(lhs)) {
-        const ast = c.Z3_mk_ite(predicate.ctx.inner, predicate.ast, lhs.ast, rhs.ast);
-        c.Z3_inc_ref(predicate.ctx.inner, ast);
-        return .{ .ast = ast, .ctx = predicate.ctx };
     }
 };
 

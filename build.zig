@@ -101,8 +101,6 @@ pub fn build(b: *std.Build) !void {
         }),
     });
     example.root_module.addImport("z3", z3_bindings);
-    // enable running `valgrind --leak-check=full zig-out/bin/main`
-    example.root_module.valgrind = true;
     b.installArtifact(example);
     const run_example = b.step("example", "Runs the example");
     run_example.dependOn(&b.addRunArtifact(example).step);
@@ -114,7 +112,6 @@ pub fn build(b: *std.Build) !void {
         .imports = &.{.{ .name = "z3", .module = z3_bindings }},
     }) });
     b.installArtifact(tests);
-    tests.root_module.valgrind = true;
     tests.filters = if (b.option([]const u8, "test-filter", "test filter")) |f| b.dupeStrings(&.{f}) else &.{};
     const run_tests = b.step("test", "Runs tests");
     run_tests.dependOn(&b.addRunArtifact(tests).step);
