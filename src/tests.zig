@@ -99,3 +99,11 @@ test "dynamic as set" {
         .select(optimize.fromInt64(0))
         .asSet());
 }
+
+test "ite" {
+    var solver: z3.Model = .initSolver();
+    defer solver.deinit();
+
+    const ite = solver.false().ite(solver.fromInt(0), solver.fromInt(1));
+    try testing.expectEqualStrings("(ite false 0 1)", ite.toString().?);
+}

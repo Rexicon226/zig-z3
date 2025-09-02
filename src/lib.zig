@@ -178,6 +178,7 @@ pub const Int = struct {
     ast: c.Z3_ast,
 
     const A = Ast(.int);
+    pub const toString = A.toString;
     pub const add = A.add;
     pub const sub = A.sub;
     pub const mul = A.mul;
@@ -199,36 +200,43 @@ pub const Real = struct {
     ast: c.Z3_ast,
 
     const A = Ast(.real);
+    pub const toString = A.toString;
 };
 pub const Float = struct {
     ctx: *Context,
     ast: c.Z3_ast,
 
     const A = Ast(.float);
+    pub const toString = A.toString;
 };
 pub const Float32 = struct {
     ctx: *Context,
     ast: c.Z3_ast,
 
     const A = Ast(.float32);
+    pub const toString = A.toString;
 };
 pub const Float64 = struct {
     ctx: *Context,
     ast: c.Z3_ast,
 
     const A = Ast(.float64);
+    pub const toString = A.toString;
 };
 pub const String = struct {
     ctx: *Context,
     ast: c.Z3_ast,
 
     const A = Ast(.string);
+    pub const toString = A.toString;
 };
 pub const Bitvector = struct {
     ctx: *Context,
     ast: c.Z3_ast,
 
     const A = Ast(.bv);
+    pub const toString = A.toString;
+
     pub const bvadd = A.bvadd;
     pub const bvsub = A.bvsub;
     pub const bvmul = A.bvmul;
@@ -253,6 +261,8 @@ pub const Array = struct {
     ast: c.Z3_ast,
 
     const A = Ast(.array);
+    pub const toString = A.toString;
+
     pub const select = A.select;
     pub const asSet = A.asSet;
 };
@@ -261,12 +271,14 @@ pub const Set = struct {
     ast: c.Z3_ast,
 
     const A = Ast(.set);
+    pub const toString = A.toString;
 };
 pub const Seq = struct {
     ctx: *Context,
     ast: c.Z3_ast,
 
     const A = Ast(.seq);
+    pub const toString = A.toString;
 };
 
 pub const Dynamic = struct {
@@ -296,17 +308,26 @@ pub fn Ast(comptime ast_kind: AstKind) type {
         pub fn deinit(self: anytype) void {
             c.Z3_dec_ref(self.ctx.inner, self.ast);
         }
+        pub fn toString(self: anytype) ?[]const u8 {
+            return if (c.Z3_ast_to_string(self.ctx.inner, self.ast)) |s| std.mem.sliceTo(s, 0) else null;
+        }
 
         inline fn verify(comptime ok: bool, comptime message: []const u8) void {
             comptime if (!ok)
                 @compileError(std.fmt.comptimePrint(message ++ ".  found '{t}'", .{ast_kind}));
         }
-        fn binop(R: type, lhs: anytype, rhs: @TypeOf(lhs.*), func: @TypeOf(c.Z3_mk_div)) R {
+        inline fn Child(T: type) type {
+            return switch (@typeInfo(T)) {
+                .pointer => |p| p.child,
+                else => T,
+            };
+        }
+        fn binop(R: type, lhs: anytype, rhs: Child(@TypeOf(lhs)), func: @TypeOf(c.Z3_mk_div)) R {
             const ast = func(lhs.ctx.inner, lhs.ast, rhs.ast);
             c.Z3_inc_ref(lhs.ctx.inner, ast);
             return .{ .ast = ast, .ctx = lhs.ctx };
         }
-        fn varop(lhs: anytype, rhss: []const @TypeOf(lhs.*), comptime func: @TypeOf(c.Z3_mk_add)) @TypeOf(lhs.*) {
+        fn varop(lhs: anytype, rhss: []const Child(@TypeOf(lhs)), comptime func: @TypeOf(c.Z3_mk_add)) Child(@TypeOf(lhs)) {
             var buf: [16]c.Z3_ast = undefined;
             if (buf.len < rhss.len + 1) @panic("varop only supports up to 15 rhs args.");
             buf[0] = lhs.ast;
@@ -317,53 +338,53 @@ pub fn Ast(comptime ast_kind: AstKind) type {
         }
 
         // *** Numeric ops ***
-        fn numericBinop(R: type, lhs: anytype, rhs: @TypeOf(lhs.*), func: @TypeOf(c.Z3_mk_div)) R {
+        fn numericBinop(R: type, lhs: anytype, rhs: Child(@TypeOf(lhs)), func: @TypeOf(c.Z3_mk_div)) R {
             verify(ast_kind.isNumeric(), "expected numeric ast kind");
             return binop(R, lhs, rhs, func);
         }
-        fn numericVarop(lhs: anytype, rhss: []const @TypeOf(lhs.*), comptime func: @TypeOf(c.Z3_mk_add)) @TypeOf(lhs.*) {
+        fn numericVarop(lhs: anytype, rhss: []const Child(@TypeOf(lhs)), comptime func: @TypeOf(c.Z3_mk_add)) Child(@TypeOf(lhs)) {
             verify(ast_kind.isNumeric(), "expected numeric ast kind");
             return varop(lhs, rhss, func);
         }
 
-        pub fn div(lhs: anytype, rhs: @TypeOf(lhs.*)) @TypeOf(lhs.*) {
-            return numericBinop(@TypeOf(lhs.*), lhs, rhs, c.Z3_mk_div);
+        pub fn div(lhs: anytype, rhs: Child(@TypeOf(lhs))) Child(@TypeOf(lhs)) {
+            return numericBinop(Child(@TypeOf(lhs)), lhs, rhs, c.Z3_mk_div);
         }
-        pub fn rem(lhs: anytype, rhs: @TypeOf(lhs.*)) @TypeOf(lhs.*) {
-            return numericBinop(@TypeOf(lhs.*), lhs, rhs, c.Z3_mk_rem);
+        pub fn rem(lhs: anytype, rhs: Child(@TypeOf(lhs))) Child(@TypeOf(lhs)) {
+            return numericBinop(Child(@TypeOf(lhs)), lhs, rhs, c.Z3_mk_rem);
         }
-        pub fn mod(lhs: anytype, rhs: @TypeOf(lhs.*)) @TypeOf(lhs.*) {
-            return numericBinop(@TypeOf(lhs.*), lhs, rhs, c.Z3_mk_mod);
+        pub fn mod(lhs: anytype, rhs: Child(@TypeOf(lhs))) Child(@TypeOf(lhs)) {
+            return numericBinop(Child(@TypeOf(lhs)), lhs, rhs, c.Z3_mk_mod);
         }
-        pub fn power(lhs: anytype, rhs: @TypeOf(lhs.*)) Real {
-            return numericBinop(@TypeOf(lhs.*), lhs, rhs, c.Z3_mk_power);
+        pub fn power(lhs: anytype, rhs: Child(@TypeOf(lhs))) Real {
+            return numericBinop(Child(@TypeOf(lhs)), lhs, rhs, c.Z3_mk_power);
         }
 
-        pub fn lt(lhs: anytype, rhs: @TypeOf(lhs.*)) Bool {
+        pub fn lt(lhs: anytype, rhs: Child(@TypeOf(lhs))) Bool {
             return numericBinop(Bool, lhs, rhs, c.Z3_mk_lt);
         }
-        pub fn le(lhs: anytype, rhs: @TypeOf(lhs.*)) Bool {
+        pub fn le(lhs: anytype, rhs: Child(@TypeOf(lhs))) Bool {
             return numericBinop(Bool, lhs, rhs, c.Z3_mk_le);
         }
-        pub fn gt(lhs: anytype, rhs: @TypeOf(lhs.*)) Bool {
+        pub fn gt(lhs: anytype, rhs: Child(@TypeOf(lhs))) Bool {
             return numericBinop(Bool, lhs, rhs, c.Z3_mk_gt);
         }
-        pub fn ge(lhs: anytype, rhs: @TypeOf(lhs.*)) Bool {
+        pub fn ge(lhs: anytype, rhs: Child(@TypeOf(lhs))) Bool {
             return numericBinop(Bool, lhs, rhs, c.Z3_mk_ge);
         }
-        pub fn eq(lhs: anytype, rhs: @TypeOf(lhs.*)) Bool {
+        pub fn eq(lhs: anytype, rhs: Child(@TypeOf(lhs))) Bool {
             return numericBinop(Bool, lhs, rhs, c.Z3_mk_eq);
         }
 
-        pub fn add(lhs: anytype, rhss: []const @TypeOf(lhs.*)) @TypeOf(lhs.*) {
+        pub fn add(lhs: anytype, rhss: []const Child(@TypeOf(lhs))) Child(@TypeOf(lhs)) {
             return numericVarop(lhs, rhss, c.Z3_mk_add);
         }
 
-        pub fn sub(lhs: anytype, rhss: []const @TypeOf(lhs.*)) @TypeOf(lhs.*) {
+        pub fn sub(lhs: anytype, rhss: []const Child(@TypeOf(lhs))) Child(@TypeOf(lhs)) {
             return numericVarop(lhs, rhss, c.Z3_mk_sub);
         }
 
-        pub fn mul(lhs: anytype, rhss: []const @TypeOf(lhs.*)) @TypeOf(lhs.*) {
+        pub fn mul(lhs: anytype, rhss: []const Child(@TypeOf(lhs))) Child(@TypeOf(lhs)) {
             return numericVarop(lhs, rhss, c.Z3_mk_mul);
         }
 
@@ -475,20 +496,20 @@ pub fn Ast(comptime ast_kind: AstKind) type {
             return binop(Bool, lhs, rhs, c.Z3_mk_implies);
         }
 
-        pub fn not(m: *Model, op: Bool) Bool {
-            const ast = c.Z3_mk_not(m.ctx, op.ast);
+        pub fn not(op: Bool) Bool {
+            const ast = c.Z3_mk_not(op.ctx.inner, op.ast);
             c.Z3_inc_ref(op.ctx.inner, ast);
-            return .{ .ast = ast, .ctx = &m.ctx };
+            return .{ .ast = ast, .ctx = &op.ctx };
         }
 
         /// Create an AST node representing an if-then-else. If `predicate` is true,
         /// the node results in `lhs`, otherwise it results in `rhs`.
         ///
         /// `rhs` and `lhs` must be the same sort, and the result type is that sort.
-        pub fn ite(m: *Model, predicate: Bool, lhs: anytype, rhs: @TypeOf(lhs.*)) @TypeOf(lhs.*) {
-            const ast = c.Z3_mk_ite(m.ctx.inner, predicate.ast, lhs.ast, rhs.ast);
-            c.Z3_inc_ref(m.ctx.inner, ast);
-            return .{ .ast = ast, .ctx = &m.ctx };
+        pub fn ite(predicate: Bool, lhs: anytype, rhs: Child(@TypeOf(lhs))) Child(@TypeOf(lhs)) {
+            const ast = c.Z3_mk_ite(predicate.ctx.inner, predicate.ast, lhs.ast, rhs.ast);
+            c.Z3_inc_ref(predicate.ctx.inner, ast);
+            return .{ .ast = ast, .ctx = predicate.ctx };
         }
     };
 }
@@ -619,6 +640,11 @@ pub const Model = struct {
 
     pub fn @"true"(m: *Model) Bool {
         const ast = c.Z3_mk_true(m.ctx.inner);
+        c.Z3_inc_ref(m.ctx.inner, ast);
+        return .{ .ctx = &m.ctx, .ast = ast };
+    }
+    pub fn @"false"(m: *Model) Bool {
+        const ast = c.Z3_mk_false(m.ctx.inner);
         c.Z3_inc_ref(m.ctx.inner, ast);
         return .{ .ctx = &m.ctx, .ast = ast };
     }
