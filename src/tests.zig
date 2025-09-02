@@ -43,7 +43,7 @@ test "bitvectors" {
 
     const a = solver.constant(.bv, "a", .{64});
     const b = solver.constant(.bv, "b", .{64});
-    const two = solver.bvFromInt64(2, 64); // ast::BV::from_i64(2, 64);
+    const two = solver.bvFromInt64(2, 64);
 
     solver.assert(a.bvsgt(b));
     solver.assert(b.bvsgt(two));
@@ -82,4 +82,20 @@ test "optimize unknown" {
 
     try testing.expectEqual(.unknown, optimize.check());
     try testing.expect(optimize.getReasonUnknown() != null);
+}
+
+test "dynamic as set" {
+    var optimize: z3.Model = .initConfig(.optimize, &.{});
+    defer optimize.deinit();
+    const set_sort = optimize.set(optimize.int());
+    const array_sort = optimize.array(optimize.int(), optimize.int());
+    const array_of_sets = optimize.constant(.array, "array_of_sets", .{ optimize.int().inner, set_sort.inner });
+    try testing.expect(array_of_sets
+        .select(optimize.fromInt64(0))
+        .asSet() != null);
+
+    const array_of_arrays = optimize.constant(.array, "array_of_arrays", .{ optimize.int().inner, array_sort.inner });
+    try testing.expectEqual(null, array_of_arrays
+        .select(optimize.fromInt64(0))
+        .asSet());
 }

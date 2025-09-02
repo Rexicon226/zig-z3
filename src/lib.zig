@@ -135,6 +135,28 @@ pub const AstKind = enum {
             else => false,
         };
     }
+
+    pub fn fromAst(lhs: anytype) AstKind {
+        return switch (c.Z3_get_sort_kind(lhs.ctx.inner, c.Z3_get_sort(lhs.ctx.inner, lhs.ast))) {
+            c.Z3_BOOL_SORT => .bool,
+            c.Z3_INT_SORT => .int,
+            c.Z3_REAL_SORT => .real,
+            c.Z3_BV_SORT => .bv,
+            c.Z3_ARRAY_SORT => .array,
+            c.Z3_FLOATING_POINT_SORT => .float,
+            c.Z3_SEQ_SORT => .seq,
+            c.Z3_RE_SORT,
+            c.Z3_CHAR_SORT,
+            c.Z3_TYPE_VAR,
+            c.Z3_UNKNOWN_SORT,
+            c.Z3_DATATYPE_SORT,
+            c.Z3_RELATION_SORT,
+            c.Z3_FINITE_DOMAIN_SORT,
+            c.Z3_ROUNDING_MODE_SORT,
+            => @panic("unimplemented"),
+            else => unreachable,
+        };
+    }
 };
 
 pub const Bool = struct {
@@ -224,6 +246,8 @@ pub const Array = struct {
     ast: c.Z3_ast,
 
     const A = Ast(.array);
+    pub const select = A.select;
+    pub const asSet = A.asSet;
 };
 pub const Set = struct {
     ctx: *Context,
@@ -238,7 +262,29 @@ pub const Seq = struct {
     const A = Ast(.seq);
 };
 
-pub fn Ast(comptime kind: AstKind) type {
+pub const Dynamic = struct {
+    ctx: *Context,
+    ast: c.Z3_ast,
+    ast_kind: AstKind,
+
+    pub fn asSet(self: Dynamic) ?Set {
+        return switch (self.ast_kind) {
+            .array => switch (c.Z3_get_sort_kind(
+                self.ctx.inner,
+                c.Z3_get_array_sort_range(
+                    self.ctx.inner,
+                    c.Z3_get_sort(self.ctx.inner, self.ast),
+                ),
+            )) {
+                c.Z3_BOOL_SORT => return .{ .ctx = self.ctx, .ast = self.ast },
+                else => null,
+            },
+            else => null,
+        };
+    }
+};
+
+pub fn Ast(comptime ast_kind: AstKind) type {
     return struct {
         pub fn deinit(self: anytype) void {
             c.Z3_dec_ref(self.ctx.inner, self.ast);
@@ -246,8 +292,8 @@ pub fn Ast(comptime kind: AstKind) type {
 
         // *** Numeric ops ***
         inline fn verifyNumeric() void {
-            comptime if (!kind.isNumeric())
-                @compileError(std.fmt.comptimePrint("expected numeric ast kind.  found '{t}'", .{kind}));
+            comptime if (!ast_kind.isNumeric())
+                @compileError(std.fmt.comptimePrint("expected numeric ast kind.  found '{t}'", .{ast_kind}));
         }
 
         fn numericBinop(R: type, lhs: anytype, rhs: @TypeOf(lhs.*), func: @TypeOf(c.Z3_mk_div)) R {
@@ -319,8 +365,8 @@ pub fn Ast(comptime kind: AstKind) type {
 
         // *** Bitvector ops ***
         inline fn verifyBitvector() void {
-            comptime if (kind != .bv)
-                @compileError(std.fmt.comptimePrint("expected bitvector (bv) ast kind.  found '{t}'", .{kind}));
+            comptime if (ast_kind != .bv)
+                @compileError(std.fmt.comptimePrint("expected bitvector (bv) ast kind.  found '{t}'", .{ast_kind}));
         }
 
         fn bvBinop(R: type, lhs: Bitvector, rhs: Bitvector, func: @TypeOf(c.Z3_mk_bvadd)) R {
@@ -394,6 +440,15 @@ pub fn Ast(comptime kind: AstKind) type {
         /// Signed greater than
         pub fn bvsgt(lhs: Bitvector, rhs: Bitvector) Bool {
             return bvBinop(Bool, lhs, rhs, c.Z3_mk_bvsgt);
+        }
+
+        // *** Array ops ***
+        pub fn select(lhs: anytype, rhs: anytype) Dynamic {
+            return .{
+                .ctx = lhs.ctx,
+                .ast = c.Z3_mk_select(lhs.ctx.inner, lhs.ast, rhs.ast),
+                .ast_kind = .fromAst(lhs),
+            };
         }
     };
 }
@@ -547,20 +602,20 @@ pub const Model = struct {
     }
 
     pub fn array(m: *Model, domain: Sort, range: Sort) Sort {
-        const sort = c.Z3_mk_array_sort(m.ctx.inner, domain.z3_sort, range.z3_sort);
-        c.Z3_inc_ref(m.ctx.inner, sort);
+        const sort = c.Z3_mk_array_sort(m.ctx.inner, domain.inner, range.inner);
+        c.Z3_inc_ref(m.ctx.inner, c.Z3_sort_to_ast(m.ctx.inner, sort));
         return .{ .ctx = &m.ctx, .inner = sort };
     }
 
     pub fn set(m: *Model, elt: Sort) Sort {
-        const sort = c.Z3_mk_set_sort(m.ctx.inner, elt.z3_sort);
-        c.Z3_inc_ref(m.ctx.inner, sort);
+        const sort = c.Z3_mk_set_sort(m.ctx.inner, elt.inner);
+        c.Z3_inc_ref(m.ctx.inner, c.Z3_sort_to_ast(m.ctx.inner, sort));
         return .{ .ctx = &m.ctx, .inner = sort };
     }
 
     pub fn seq(m: *Model, elt: Sort) Sort {
-        const sort = c.Z3_mk_seq_sort(m.ctx.inner, elt.z3_sort);
-        c.Z3_inc_ref(m.ctx.inner, sort);
+        const sort = c.Z3_mk_seq_sort(m.ctx.inner, elt.inner);
+        c.Z3_inc_ref(m.ctx.inner, c.Z3_sort_to_ast(m.ctx.inner, sort));
         return .{ .ctx = &m.ctx, .inner = sort };
     }
 
