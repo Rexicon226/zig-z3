@@ -21,7 +21,7 @@ pub const Context = struct {
         string: ?c.Z3_sort = null,
     };
 
-    const ConfigParam = union(enum) {
+    pub const ConfigParam = union(enum) {
         timeout: c_uint,
         rlimit: c_uint,
         type_check: bool,
@@ -49,13 +49,18 @@ pub const Context = struct {
         const cfg = c.Z3_mk_config();
         defer c.Z3_del_config(cfg);
         for (config) |param| {
-            var buf: [64]u8 = undefined;
+            var buf: [64]u8 = @splat(0);
             const value_str: [:0]const u8 = switch (param) {
                 inline else => |payload| switch (@TypeOf(payload)) {
-                    c_uint => std.fmt.bufPrintZ(&buf, "{}", .{payload}) catch @panic("unreachable"),
+                    c_uint => std.fmt.bufPrintZ(&buf, "{}", .{payload}) catch unreachable,
                     bool => if (payload) "true" else "false",
                     [*:0]const u8 => std.mem.sliceTo(payload, 0),
-                    else => unreachable,
+                    else => switch (@typeInfo(@TypeOf(payload))) {
+                        .@"enum" => @tagName(payload),
+                        else => {
+                            @compileError("TODO: support ConfigParam payload type '" ++ @typeName(@TypeOf(payload)) ++ "'");
+                        },
+                    },
                 },
             };
             c.Z3_set_param_value(cfg, @tagName(param).ptr, value_str.ptr);
@@ -268,7 +273,6 @@ pub const Array = struct {
 
     pub const select = Ast.select;
     pub const store = Ast.store;
-    pub const asSet = Ast.asSet;
 };
 pub const Set = struct {
     ctx: *Context,

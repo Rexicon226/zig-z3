@@ -3,7 +3,11 @@ const std = @import("std");
 const testing = std.testing;
 
 test "context" {
-    var ctx = z3.Context.init(&.{.{ .proof = true }});
+    var ctx = z3.Context.init(&.{
+        .{ .proof = true },
+        .{ .encoding = .ascii },
+        .{ .timeout = 10 },
+    });
     defer ctx.deinit();
 }
 
