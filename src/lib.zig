@@ -141,6 +141,7 @@ pub const Bool = struct {
         return .{ .ast = ast, .ctx = predicate.ctx };
     }
 };
+
 pub const Int = struct {
     // storing ctx allows a builder pattern. i.e. `x.div(y)`
     ctx: *Context,
@@ -164,6 +165,7 @@ pub const Int = struct {
 
     pub const asInt64 = Ast.asInt64;
 };
+
 pub const Real = struct {
     ctx: *Context,
     ast: c.Z3_ast,
@@ -171,6 +173,7 @@ pub const Real = struct {
     pub const toString = Ast.toString;
     pub const eq = Ast.eq;
 };
+
 pub const Float = struct {
     ctx: *Context,
     ast: c.Z3_ast,
@@ -178,6 +181,7 @@ pub const Float = struct {
     pub const toString = Ast.toString;
     pub const eq = Ast.eq;
 };
+
 pub const String = struct {
     ctx: *Context,
     ast: c.Z3_ast,
@@ -185,6 +189,7 @@ pub const String = struct {
     pub const toString = Ast.toString;
     pub const eq = Ast.eq;
 };
+
 pub const Bitvector = struct {
     ctx: *Context,
     ast: c.Z3_ast,
@@ -264,6 +269,7 @@ pub const Bitvector = struct {
         return bvBinop(Bool, lhs, rhs, c.Z3_mk_bvsgt);
     }
 };
+
 pub const Array = struct {
     ctx: *Context,
     ast: c.Z3_ast,
@@ -274,6 +280,7 @@ pub const Array = struct {
     pub const select = Ast.select;
     pub const store = Ast.store;
 };
+
 pub const Set = struct {
     ctx: *Context,
     ast: c.Z3_ast,
@@ -281,12 +288,14 @@ pub const Set = struct {
     pub const toString = Ast.toString;
     pub const eq = Ast.eq;
 };
+
 pub const Seq = struct {
     ctx: *Context,
     ast: c.Z3_ast,
 
     pub const toString = Ast.toString;
 };
+
 pub const Dynamic = struct {
     ctx: *Context,
     ast: c.Z3_ast,
@@ -346,10 +355,12 @@ const Ast = struct {
             };
         }
     };
-    pub fn deinit(self: anytype) void {
+
+    fn deinit(self: anytype) void {
         c.Z3_dec_ref(self.ctx.inner, self.ast);
     }
-    pub fn toString(self: anytype) ?[]const u8 {
+
+    fn toString(self: anytype) ?[]const u8 {
         return if (c.Z3_ast_to_string(self.ctx.inner, self.ast)) |s| std.mem.sliceTo(s, 0) else null;
     }
 
@@ -357,20 +368,24 @@ const Ast = struct {
         comptime if (!ok)
             @compileError(std.fmt.comptimePrint(message ++ ".  found '{s}'", .{@typeName(T)}));
     }
+
     inline fn Child(T: type) type {
         return switch (@typeInfo(T)) {
             .pointer => |p| p.child,
             else => T,
         };
     }
+
     fn binopAny(R: type, lhs: anytype, rhs: anytype, func: @TypeOf(c.Z3_mk_div)) R {
         const ast = func(lhs.ctx.inner, lhs.ast, rhs.ast);
         c.Z3_inc_ref(lhs.ctx.inner, ast);
         return .{ .ast = ast, .ctx = lhs.ctx };
     }
+
     fn binop(R: type, lhs: anytype, rhs: Child(@TypeOf(lhs)), func: @TypeOf(c.Z3_mk_div)) R {
         return binopAny(R, lhs, rhs, func);
     }
+
     fn varop(R: type, lhs: anytype, rhss: []const Child(@TypeOf(lhs)), comptime func: @TypeOf(c.Z3_mk_add)) R {
         var buf: [16]c.Z3_ast = undefined;
         if (buf.len < rhss.len + 1) @panic("varop only supports up to 15 rhs args.");
@@ -385,55 +400,66 @@ const Ast = struct {
     inline fn verifyNumeric(T: type) void {
         verify(T == Int or T == Float or T == Real, T, "expected numeric type");
     }
+
     fn numericBinop(R: type, lhs: anytype, rhs: Child(@TypeOf(lhs)), func: @TypeOf(c.Z3_mk_div)) R {
         verifyNumeric(Child(@TypeOf(lhs)));
         return binop(R, lhs, rhs, func);
     }
+
     fn numericVarop(lhs: anytype, rhss: []const Child(@TypeOf(lhs)), comptime func: @TypeOf(c.Z3_mk_add)) Child(@TypeOf(lhs)) {
         verifyNumeric(Child(@TypeOf(lhs)));
         return varop(Child(@TypeOf(lhs)), lhs, rhss, func);
     }
 
-    pub fn div(lhs: anytype, rhs: Child(@TypeOf(lhs))) Child(@TypeOf(lhs)) {
+    fn div(lhs: anytype, rhs: Child(@TypeOf(lhs))) Child(@TypeOf(lhs)) {
         return numericBinop(Child(@TypeOf(lhs)), lhs, rhs, c.Z3_mk_div);
     }
-    pub fn rem(lhs: anytype, rhs: Child(@TypeOf(lhs))) Child(@TypeOf(lhs)) {
+
+    fn rem(lhs: anytype, rhs: Child(@TypeOf(lhs))) Child(@TypeOf(lhs)) {
         return numericBinop(Child(@TypeOf(lhs)), lhs, rhs, c.Z3_mk_rem);
     }
-    pub fn mod(lhs: anytype, rhs: Child(@TypeOf(lhs))) Child(@TypeOf(lhs)) {
+
+    fn mod(lhs: anytype, rhs: Child(@TypeOf(lhs))) Child(@TypeOf(lhs)) {
         return numericBinop(Child(@TypeOf(lhs)), lhs, rhs, c.Z3_mk_mod);
     }
-    pub fn power(lhs: anytype, rhs: Child(@TypeOf(lhs))) Real {
+
+    fn power(lhs: anytype, rhs: Child(@TypeOf(lhs))) Real {
         return numericBinop(Child(@TypeOf(lhs)), lhs, rhs, c.Z3_mk_power);
     }
 
-    pub fn lt(lhs: anytype, rhs: Child(@TypeOf(lhs))) Bool {
+    fn lt(lhs: anytype, rhs: Child(@TypeOf(lhs))) Bool {
         return numericBinop(Bool, lhs, rhs, c.Z3_mk_lt);
     }
-    pub fn le(lhs: anytype, rhs: Child(@TypeOf(lhs))) Bool {
+
+    fn le(lhs: anytype, rhs: Child(@TypeOf(lhs))) Bool {
         return numericBinop(Bool, lhs, rhs, c.Z3_mk_le);
     }
-    pub fn gt(lhs: anytype, rhs: Child(@TypeOf(lhs))) Bool {
+
+    fn gt(lhs: anytype, rhs: Child(@TypeOf(lhs))) Bool {
         return numericBinop(Bool, lhs, rhs, c.Z3_mk_gt);
     }
-    pub fn ge(lhs: anytype, rhs: Child(@TypeOf(lhs))) Bool {
+
+    fn ge(lhs: anytype, rhs: Child(@TypeOf(lhs))) Bool {
         return numericBinop(Bool, lhs, rhs, c.Z3_mk_ge);
     }
-    pub fn eq(lhs: anytype, rhs: Child(@TypeOf(lhs))) Bool {
+
+    fn eq(lhs: anytype, rhs: Child(@TypeOf(lhs))) Bool {
         return binop(Bool, lhs, rhs, c.Z3_mk_eq);
     }
 
-    pub fn add(lhs: anytype, rhss: []const Child(@TypeOf(lhs))) Child(@TypeOf(lhs)) {
+    fn add(lhs: anytype, rhss: []const Child(@TypeOf(lhs))) Child(@TypeOf(lhs)) {
         return numericVarop(lhs, rhss, c.Z3_mk_add);
     }
-    pub fn sub(lhs: anytype, rhss: []const Child(@TypeOf(lhs))) Child(@TypeOf(lhs)) {
+
+    fn sub(lhs: anytype, rhss: []const Child(@TypeOf(lhs))) Child(@TypeOf(lhs)) {
         return numericVarop(lhs, rhss, c.Z3_mk_sub);
     }
-    pub fn mul(lhs: anytype, rhss: []const Child(@TypeOf(lhs))) Child(@TypeOf(lhs)) {
+
+    fn mul(lhs: anytype, rhss: []const Child(@TypeOf(lhs))) Child(@TypeOf(lhs)) {
         return numericVarop(lhs, rhss, c.Z3_mk_mul);
     }
 
-    pub fn asInt64(lhs: anytype) ?i64 {
+    fn asInt64(lhs: anytype) ?i64 {
         var ret: i64 = undefined;
         return if (c.Z3_get_numeral_int64(lhs.ctx.inner, lhs.ast, &ret))
             ret
@@ -442,10 +468,10 @@ const Ast = struct {
     }
 
     // *** Array ops ***
-    pub fn select(lhs: anytype, rhs: anytype) Dynamic {
+    fn select(lhs: anytype, rhs: anytype) Dynamic {
         return binopAny(Dynamic, lhs, rhs, c.Z3_mk_select);
     }
-    pub fn store(lhs: anytype, index: Int, value: anytype) Child(@TypeOf(lhs)) {
+    fn store(lhs: anytype, index: Int, value: anytype) Child(@TypeOf(lhs)) {
         const ast = c.Z3_mk_store(
             lhs.ctx.inner,
             lhs.ast,
