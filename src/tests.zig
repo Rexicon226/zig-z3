@@ -3,10 +3,10 @@ const std = @import("std");
 const testing = std.testing;
 
 test "context" {
-    var ctx = z3.Context.init(&.{
-        .{ .proof = true },
-        .{ .encoding = .ascii },
-        .{ .timeout = 10 },
+    var ctx = z3.Context.init(.{
+        .proof = true,
+        .encoding = .ascii,
+        .timeout = 10,
     });
     defer ctx.deinit();
 }
@@ -66,7 +66,7 @@ test "bitvectors" {
 test "optimize unknown" {
     var optimize: z3.Model = .initConfig(
         .optimize,
-        &.{.{ .timeout = 1 }}, // 1 ms timeout
+        .{ .timeout = 1 }, // 1 ms timeout
     );
     defer optimize.deinit();
 
@@ -88,7 +88,7 @@ test "optimize unknown" {
 }
 
 test "dynamic as set" {
-    var optimize: z3.Model = .initConfig(.optimize, &.{});
+    var optimize: z3.Model = .initConfig(.optimize, .{});
     defer optimize.deinit();
     const set_sort = optimize.set(optimize.int());
     const array_sort = optimize.array(optimize.int(), optimize.int());

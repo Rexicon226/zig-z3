@@ -12,7 +12,7 @@ pub const Context = struct {
     cached_sorts: CachedSorts,
 
     /// sorts that can be cached which only require a single *Model argument
-    const CachedSorts = struct {
+    pub const CachedSorts = struct {
         bool: ?c.Z3_sort = null,
         int: ?c.Z3_sort = null,
         real: ?c.Z3_sort = null,
@@ -21,49 +21,48 @@ pub const Context = struct {
         string: ?c.Z3_sort = null,
     };
 
-    pub const ConfigParam = union(enum) {
-        timeout: c_uint,
-        rlimit: c_uint,
-        type_check: bool,
-        well_sorted_check: bool,
-        auto_config: bool,
-        proof: bool,
-        model: bool,
-        model_validate: bool,
-        dump_models: bool,
-        stats: bool,
-        trace: bool,
-        trace_file_name: [*:0]const u8,
-        dot_proof_file: [*:0]const u8,
-        unsat_core: bool,
-        debug_ref_count: bool,
-        smtlib2_compliant: bool,
-        encoding: enum { unicode, bmp, ascii },
+    pub const Config = struct {
+        timeout: ?u32 = null,
+        rlimit: ?u32 = null,
+        type_check: ?bool = null,
+        well_sorted_check: ?bool = null,
+        auto_config: ?bool = null,
+        proof: ?bool = null,
+        model: ?bool = null,
+        model_validate: ?bool = null,
+        dump_models: ?bool = null,
+        stats: ?bool = null,
+        trace: ?bool = null,
+        trace_file_name: ?[*:0]const u8 = null,
+        dot_proof_file: ?[*:0]const u8 = null,
+        unsat_core: ?bool = null,
+        debug_ref_count: ?bool = null,
+        smtlib2_compliant: ?bool = null,
+        encoding: ?enum { unicode, bmp, ascii } = null,
 
         // TODO support additional params and renames: https://github.com/Z3Prover/z3/blob/49703f8bba0e73fbd2aa6b180f8afdaeadd4d7a4/src/util/gparams.cpp#L44-L73
     };
 
-    pub const Config = []const ConfigParam;
-
     pub fn init(config: Config) Context {
         const cfg = c.Z3_mk_config();
         defer c.Z3_del_config(cfg);
-        for (config) |param| {
-            var buf: [64]u8 = @splat(0);
-            const value_str: [:0]const u8 = switch (param) {
-                inline else => |payload| switch (@TypeOf(payload)) {
-                    c_uint => std.fmt.bufPrintZ(&buf, "{}", .{payload}) catch unreachable,
+
+        inline for (@typeInfo(Config).@"struct".fields) |f| {
+            var buf: [64]u8 = undefined;
+            if (@field(config, f.name)) |payload| {
+                const value_str: [:0]const u8 = switch (@TypeOf(payload)) {
+                    u32 => std.fmt.bufPrintZ(&buf, "{}", .{payload}) catch unreachable,
                     bool => if (payload) "true" else "false",
                     [*:0]const u8 => std.mem.sliceTo(payload, 0),
                     else => switch (@typeInfo(@TypeOf(payload))) {
                         .@"enum" => @tagName(payload),
                         else => {
-                            @compileError("TODO: support ConfigParam payload type '" ++ @typeName(@TypeOf(payload)) ++ "'");
+                            @compileError("TODO: support Config payload type '" ++ @typeName(@TypeOf(payload)) ++ "'");
                         },
                     },
-                },
-            };
-            c.Z3_set_param_value(cfg, @tagName(param).ptr, value_str.ptr);
+                };
+                c.Z3_set_param_value(cfg, f.name.ptr, value_str.ptr);
+            }
         }
         const inner = c.Z3_mk_context_rc(cfg);
         c.Z3_set_error_handler(inner, errorHandler);
@@ -501,7 +500,7 @@ pub const Sort = struct {
     ctx: *Context,
     inner: c.Z3_sort,
 
-    pub const Tag = enum(c_uint) {
+    pub const Tag = enum(u32) {
         /// `Z3_UNINTERPRETED_SORT`
         uninterpreted = c.Z3_UNINTERPRETED_SORT,
         /// `Z3_BOOL_SORT`
@@ -559,7 +558,7 @@ pub const Model = struct {
     }
 
     pub fn initSolver() Model {
-        return initConfig(.solver, &.{.{ .proof = true }});
+        return initConfig(.solver, .{ .proof = true });
     }
 
     pub fn initConfig(comptime p: Prover, config: Context.Config) Model {
@@ -670,20 +669,14 @@ pub const Model = struct {
 
     /// T must be a floating point type
     pub fn float(m: *Model, comptime T: type) Sort {
-        const ebits: c_uint = std.math.floatExponentBits(T);
-        const sbits: c_uint = std.math.floatMantissaBits(T) + 1;
-        if (@typeInfo(T) != .float) @compileError("expected floating point type. found '" ++ @typeName(T) ++ "'");
-        switch (T) {
-            f32 => {
-                comptime std.debug.assert(ebits == 8 and sbits == 24);
-                return m.ctx.getSortByName(.float32, "Z3_mk_fpa_sort", .{ ebits, sbits });
-            },
-            f64 => {
-                comptime std.debug.assert(ebits == 11 and sbits == 53);
-                return m.ctx.getSortByName(.float64, "Z3_mk_fpa_sort", .{ ebits, sbits });
-            },
-            else => return m.ctx.getSortByName(.float, "Z3_mk_fpa_sort", .{ ebits, sbits }),
-        }
+        const ebits: u32 = std.math.floatExponentBits(T);
+        const sbits: u32 = std.math.floatMantissaBits(T) + 1;
+        const tag: Ast.Tag = switch (T) {
+            f32 => .float32,
+            f64 => .float64,
+            else => .float,
+        };
+        return m.ctx.getSortByName(tag, "Z3_mk_fpa_sort", .{ ebits, sbits });
     }
 
     pub fn string(m: *Model) Sort {
@@ -721,7 +714,7 @@ pub const Model = struct {
     pub fn push(m: Model) void {
         c.Z3_solver_push(m.ctx.inner, m.inner.solver);
     }
-    pub fn pop(m: Model, n: c_uint) void {
+    pub fn pop(m: Model, n: u32) void {
         c.Z3_solver_pop(m.ctx.inner, m.inner.solver, n);
     }
 };
