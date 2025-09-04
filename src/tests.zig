@@ -136,3 +136,21 @@ test "array example 1" {
     try testing.expectEqual(.unsat, solver.check());
     solver.pop(1);
 }
+
+fn expectFloatSize(solver: *z3.Model, T: type, comptime tag: z3.Ast.Tag, ebits: u32, sbits: u32) !void {
+    try testing.expect(@field(solver.ctx.cached_sorts, @tagName(tag)) == null);
+    const float32 = solver.constantFloat(T, @tagName(tag));
+    try testing.expect(@field(solver.ctx.cached_sorts, @tagName(tag)) != null);
+    try std.testing.expectEqual(ebits, float32.getSort().exponentSize());
+    try std.testing.expectEqual(sbits, float32.getSort().significandSize());
+}
+
+test "float sizes" {
+    var solver: z3.Model = .initSolver();
+    defer solver.deinit();
+
+    try expectFloatSize(&solver, f16, .float16, 5, 11);
+    try expectFloatSize(&solver, f32, .float32, 8, 24);
+    try expectFloatSize(&solver, f64, .float64, 11, 53);
+    try expectFloatSize(&solver, f128, .float128, 15, 113);
+}

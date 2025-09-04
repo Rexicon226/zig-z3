@@ -16,8 +16,10 @@ pub const Context = struct {
         bool: ?c.Z3_sort = null,
         int: ?c.Z3_sort = null,
         real: ?c.Z3_sort = null,
+        float16: ?c.Z3_sort = null,
         float32: ?c.Z3_sort = null,
         float64: ?c.Z3_sort = null,
+        float128: ?c.Z3_sort = null,
         string: ?c.Z3_sort = null,
     };
 
@@ -85,9 +87,8 @@ pub const Context = struct {
     ) Sort {
         const name = @tagName(tag);
         if (@hasField(CachedSorts, name)) {
-            comptime assert(args.len == 0);
             if (@field(ctx.cached_sorts, name)) |sort| return .{ .inner = sort, .ctx = ctx };
-            const sort = @field(c, mk_fn_name)(ctx.inner);
+            const sort = @call(.auto, @field(c, mk_fn_name), .{ctx.inner} ++ args);
             @field(ctx.cached_sorts, name) = sort;
             c.Z3_inc_ref(ctx.inner, c.Z3_sort_to_ast(ctx.inner, sort));
             return .{ .inner = sort, .ctx = ctx };
@@ -106,6 +107,7 @@ pub const Bool = struct {
 
     pub const toString = Ast.toString;
     pub const eq = Ast.eq;
+    pub const getSort = Ast.getSort;
 
     pub fn @"and"(lhs: Bool, rhss: []const Bool) Bool {
         return Ast.varop(Bool, lhs, rhss, c.Z3_mk_and);
@@ -148,6 +150,7 @@ pub const Int = struct {
 
     pub const toString = Ast.toString;
     pub const eq = Ast.eq;
+    pub const getSort = Ast.getSort;
 
     pub const add = Ast.add;
     pub const sub = Ast.sub;
@@ -171,6 +174,7 @@ pub const Real = struct {
 
     pub const toString = Ast.toString;
     pub const eq = Ast.eq;
+    pub const getSort = Ast.getSort;
 };
 
 pub const Float = struct {
@@ -179,6 +183,7 @@ pub const Float = struct {
 
     pub const toString = Ast.toString;
     pub const eq = Ast.eq;
+    pub const getSort = Ast.getSort;
 };
 
 pub const String = struct {
@@ -187,6 +192,7 @@ pub const String = struct {
 
     pub const toString = Ast.toString;
     pub const eq = Ast.eq;
+    pub const getSort = Ast.getSort;
 };
 
 pub const Bitvector = struct {
@@ -195,6 +201,7 @@ pub const Bitvector = struct {
 
     pub const toString = Ast.toString;
     pub const eq = Ast.eq;
+    pub const getSort = Ast.getSort;
 
     pub const asInt64 = Ast.asInt64;
 
@@ -275,6 +282,7 @@ pub const Array = struct {
 
     pub const toString = Ast.toString;
     pub const eq = Ast.eq;
+    pub const getSort = Ast.getSort;
 
     pub const select = Ast.select;
     pub const store = Ast.store;
@@ -286,6 +294,7 @@ pub const Set = struct {
 
     pub const toString = Ast.toString;
     pub const eq = Ast.eq;
+    pub const getSort = Ast.getSort;
 };
 
 pub const Seq = struct {
@@ -301,6 +310,7 @@ pub const Dynamic = struct {
 
     pub const toString = Ast.toString;
     pub const eq = Ast.eq;
+    pub const getSort = Ast.getSort;
 
     pub fn sortKind(self: Dynamic) Sort.Tag {
         return @enumFromInt(c.Z3_get_sort_kind(
@@ -330,13 +340,16 @@ pub const Dynamic = struct {
 };
 
 /// common operations used by multiple Ast impls
-const Ast = struct {
+pub const Ast = struct {
     pub const Tag = enum {
         bool,
         int,
         real,
+        float16,
         float32,
         float64,
+        float128,
+        float,
         bv,
         array,
         seq,
@@ -346,8 +359,7 @@ const Ast = struct {
                 .bool => Bool,
                 .int => Int,
                 .real => Real,
-                .float32 => Float,
-                .float64 => Float,
+                .float16, .float32, .float64, .float128, .float => Float,
                 .bv => Bitvector,
                 .array => Array,
                 .seq => Seq,
@@ -361,6 +373,12 @@ const Ast = struct {
 
     fn toString(self: anytype) ?[]const u8 {
         return if (c.Z3_ast_to_string(self.ctx.inner, self.ast)) |s| std.mem.sliceTo(s, 0) else null;
+    }
+
+    fn getSort(self: anytype) Sort {
+        const sort = c.Z3_get_sort(self.ctx.inner, self.ast);
+        c.Z3_inc_ref(self.ctx.inner, c.Z3_sort_to_ast(self.ctx.inner, sort));
+        return .{ .ctx = self.ctx, .inner = sort };
     }
 
     inline fn verify(comptime ok: bool, T: type, comptime message: []const u8) void {
@@ -530,6 +548,23 @@ pub const Sort = struct {
         /// `Z3_UNKNOWN_SORT`
         unknown = c.Z3_UNKNOWN_SORT,
     };
+
+    pub fn kind(self: Sort) Tag {
+        return @enumFromInt(c.Z3_get_sort_kind(self.ctx.inner, self.inner));
+    }
+
+    pub fn exponentSize(self: Sort) ?u32 {
+        return if (self.kind() == .floating_point)
+            c.Z3_fpa_get_ebits(self.ctx.inner, self.inner)
+        else
+            null;
+    }
+    pub fn significandSize(self: Sort) ?u32 {
+        return if (self.kind() == .floating_point)
+            c.Z3_fpa_get_sbits(self.ctx.inner, self.inner)
+        else
+            null;
+    }
 };
 
 const Prover = enum { solver, optimize };
@@ -623,6 +658,14 @@ pub const Model = struct {
         return .{ .ctx = &m.ctx, .ast = ast };
     }
 
+    pub fn constantFloat(m: *Model, T: type, name: ?[:0]const u8) Float {
+        const sort = m.float(T);
+        const sym = Symbol.asZ3(.{ .string = name }, &m.ctx);
+        const ast = c.Z3_mk_const(m.ctx.inner, sym, sort.inner);
+        c.Z3_inc_ref(m.ctx.inner, ast);
+        return .{ .ctx = &m.ctx, .ast = ast };
+    }
+
     pub fn fromInt(m: *Model, value: i32) Int {
         const sort = m.ctx.getSort(.int, .{});
         const ast = c.Z3_mk_int(m.ctx.inner, value, sort.inner);
@@ -672,8 +715,10 @@ pub const Model = struct {
         const ebits: u32 = std.math.floatExponentBits(T);
         const sbits: u32 = std.math.floatMantissaBits(T) + 1;
         const tag: Ast.Tag = switch (T) {
+            f16 => .float16,
             f32 => .float32,
             f64 => .float64,
+            f128 => .float128,
             else => .float,
         };
         return m.ctx.getSortByName(tag, "Z3_mk_fpa_sort", .{ ebits, sbits });
