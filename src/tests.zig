@@ -92,12 +92,20 @@ test "dynamic as set" {
     defer optimize.deinit();
     const set_sort = optimize.set(optimize.int());
     const array_sort = optimize.array(optimize.int(), optimize.int());
-    const array_of_sets = optimize.constant(.array, "array_of_sets", .{ optimize.int().inner, set_sort.inner });
+    const array_of_sets = optimize.constantWithSort(
+        .array,
+        "array_of_sets",
+        optimize.array(optimize.int(), set_sort),
+    );
     try testing.expect(array_of_sets
         .select(optimize.fromInt64(0))
         .asSet() != null);
 
-    const array_of_arrays = optimize.constant(.array, "array_of_arrays", .{ optimize.int().inner, array_sort.inner });
+    const array_of_arrays = optimize.constant(
+        .array,
+        "array_of_arrays",
+        .{ optimize.int(), array_sort },
+    );
     try testing.expectEqual(null, array_of_arrays
         .select(optimize.fromInt64(0))
         .asSet());
@@ -114,7 +122,7 @@ test "ite" {
 test "array example 1" {
     var solver: z3.Model = .initSolver();
     defer solver.deinit();
-    const int_sort = solver.int().inner;
+    const int_sort = solver.int();
     const a1 = solver.constant(.array, "a1", .{ int_sort, int_sort });
     const a2 = solver.constant(.array, "a2", .{ int_sort, int_sort });
     const idx1 = solver.constant(.int, "idx1", .{});
@@ -137,9 +145,9 @@ test "array example 1" {
     solver.pop(1);
 }
 
-fn expectFloatSize(solver: *z3.Model, T: type, comptime tag: z3.Ast.Tag, ebits: u32, sbits: u32) !void {
+fn expectFloatSize(solver: *z3.Model, comptime tag: z3.Ast.Tag, ebits: u32, sbits: u32) !void {
     try testing.expect(@field(solver.ctx.cached_sorts, @tagName(tag)) == null);
-    const float32 = solver.constantFloat(T, @tagName(tag));
+    const float32 = solver.constant(tag, @tagName(tag), .{});
     try testing.expect(@field(solver.ctx.cached_sorts, @tagName(tag)) != null);
     try std.testing.expectEqual(ebits, float32.getSort().exponentSize());
     try std.testing.expectEqual(sbits, float32.getSort().significandSize());
@@ -149,8 +157,8 @@ test "float sizes" {
     var solver: z3.Model = .initSolver();
     defer solver.deinit();
 
-    try expectFloatSize(&solver, f16, .float16, 5, 11);
-    try expectFloatSize(&solver, f32, .float32, 8, 24);
-    try expectFloatSize(&solver, f64, .float64, 11, 53);
-    try expectFloatSize(&solver, f128, .float128, 15, 113);
+    try expectFloatSize(&solver, .float16, 5, 11);
+    try expectFloatSize(&solver, .float32, 8, 24);
+    try expectFloatSize(&solver, .float64, 11, 53);
+    try expectFloatSize(&solver, .float128, 15, 113);
 }

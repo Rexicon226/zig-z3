@@ -330,7 +330,10 @@ pub const Dynamic = struct {
                     ),
                 ));
                 switch (sort_kind) {
-                    .bool => return .{ .ctx = self.ctx, .ast = self.ast },
+                    .bool => {
+                        c.Z3_inc_ref(self.ctx.inner, self.ast);
+                        return .{ .ctx = self.ctx, .ast = self.ast };
+                    },
                     else => return null,
                 }
             },
@@ -651,15 +654,11 @@ pub const Model = struct {
     }
 
     pub fn constant(m: *Model, comptime tag: Ast.Tag, name: ?[:0]const u8, args: anytype) tag.Data() {
-        const sort = m.ctx.getSort(tag, args);
-        const sym = Symbol.asZ3(.{ .string = name }, &m.ctx);
-        const ast = c.Z3_mk_const(m.ctx.inner, sym, sort.inner);
-        c.Z3_inc_ref(m.ctx.inner, ast);
-        return .{ .ctx = &m.ctx, .ast = ast };
+        const sort = @call(.auto, @field(Model, @tagName(tag)), .{m} ++ args);
+        return m.constantWithSort(tag, name, sort);
     }
 
-    pub fn constantFloat(m: *Model, T: type, name: ?[:0]const u8) Float {
-        const sort = m.float(T);
+    pub fn constantWithSort(m: *Model, comptime tag: Ast.Tag, name: ?[:0]const u8, sort: Sort) tag.Data() {
         const sym = Symbol.asZ3(.{ .string = name }, &m.ctx);
         const ast = c.Z3_mk_const(m.ctx.inner, sym, sort.inner);
         c.Z3_inc_ref(m.ctx.inner, ast);
@@ -724,13 +723,29 @@ pub const Model = struct {
         return m.ctx.getSortByName(tag, "Z3_mk_fpa_sort", .{ ebits, sbits });
     }
 
+    pub fn float16(m: *Model) Sort {
+        return m.float(f16);
+    }
+
+    pub fn float32(m: *Model) Sort {
+        return m.float(f32);
+    }
+
+    pub fn float64(m: *Model) Sort {
+        return m.float(f64);
+    }
+
+    pub fn float128(m: *Model) Sort {
+        return m.float(f128);
+    }
+
     pub fn string(m: *Model) Sort {
         return m.ctx.getSort(.string, .{});
     }
 
-    pub fn bv(m: Model, sz: u32) Sort {
+    pub fn bv(m: *Model, sz: u32) Sort {
         const sort = c.Z3_mk_bv_sort(m.ctx.inner, sz);
-        c.Z3_inc_ref(m.ctx.inner, sort);
+        c.Z3_inc_ref(m.ctx.inner, c.Z3_sort_to_ast(m.ctx.inner, sort));
         return .{ .ctx = &m.ctx, .inner = sort };
     }
 
