@@ -10,16 +10,11 @@ pub fn build(b: *std.Build) !void {
         .optimize = optimize,
     });
 
-    const z3 = b.addLibrary(.{
-        .name = "z3",
-        .linkage = .static,
-        .root_module = b.createModule(.{
-            .target = target,
-            .optimize = optimize,
-            .link_libcpp = true,
-        }),
+    const z3 = b.createModule(.{
+        .target = target,
+        .optimize = optimize,
+        .link_libcpp = true,
     });
-    b.installArtifact(z3);
 
     z3.linkLibrary(gmp.artifact("gmp"));
     z3.addIncludePath(src.path("src"));
@@ -78,12 +73,19 @@ pub fn build(b: *std.Build) !void {
     });
     translate_c.addIncludePath(src.path("src/api"));
 
+    const z3_lib = b.addLibrary(.{
+        .name = "z3",
+        .linkage = .static,
+        .root_module = z3,
+    });
+    b.installArtifact(z3_lib);
+
     const z3_mod = b.addModule("z3", .{
         .root_source_file = translate_c.getOutput(),
         .target = target,
         .optimize = optimize,
     });
-    z3_mod.linkLibrary(z3);
+    z3_mod.linkLibrary(z3_lib);
 
     const z3_bindings = b.addModule("z3_bindings", .{
         .root_source_file = b.path("src/lib.zig"),
