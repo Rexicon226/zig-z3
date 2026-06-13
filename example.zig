@@ -1,25 +1,24 @@
 const std = @import("std");
 const z3 = @import("z3");
 
-const Model = z3.Model;
-
 pub fn main() !void {
     basic();
 }
 
 fn basic() void {
-    var model = Model.init(.solver);
+    var model = z3.Model.initSolver();
     defer model.deinit();
 
-    const x = model.constant(.int, "x");
-    const y = model.constant(.int, "y");
-
-    const constraint = model.eq(
-        model.add(&.{ x, y }),
-        model.int(10),
-    );
-
-    model.assert(constraint);
-
+    const x = model.constant(.int, "x", .{});
+    const y = model.constant(.int, "y", .{});
+    const xaddy = x.add(&.{y});
+    const ten = model.fromInt64(10);
+    model.assert(xaddy.eq(ten));
     std.debug.print("result: {}\n", .{model.check()});
+
+    const pmodel = model.getLastModel();
+    defer pmodel.deinit();
+    const xv = pmodel.eval(x, true).?.asInt64().?;
+    const yv = pmodel.eval(y, true).?.asInt64().?;
+    std.debug.print("x: {} y: {}\n", .{ xv, yv });
 }
